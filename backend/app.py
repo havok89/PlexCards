@@ -2,12 +2,11 @@ import logging
 import base64
 import io
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-
-from backend.config import BASE_DIR, HOST, PORT
+from backend.config import BASE_DIR, HOST, PORT, CUSTOM_FONTS_DIR
 from backend.db import init_db, get_all_shows, get_show, update_show_mode, update_show_style
 from backend.sync_manager import SyncManager
 from backend.ai_styler import AIStyler
@@ -55,6 +54,25 @@ def get_config_info():
         "tv_library": PLEX_TV_LIBRARY,
         "poll_interval_hours": POLL_INTERVAL_HOURS
     }
+
+@app.get("/api/fonts")
+def list_fonts():
+    """List all available local, custom, and cached fonts."""
+    fonts = renderer.get_available_fonts()
+    return {"fonts": fonts}
+
+@app.post("/api/fonts/upload")
+async def upload_custom_font(file: UploadFile = File(...)):
+    """Upload a custom .ttf or .otf font file."""
+    if not (file.filename.endswith(".ttf") or file.filename.endswith(".otf")):
+        raise HTTPException(status_code=400, detail="Only .ttf and .otf font files are supported")
+
+    dest = CUSTOM_FONTS_DIR / file.filename
+    content = await file.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+    logger.info(f"✓ Saved uploaded custom font to {dest}")
+    return {"status": "success", "font_name": dest.stem, "filename": file.filename}
 
 @app.get("/api/shows")
 def list_shows():

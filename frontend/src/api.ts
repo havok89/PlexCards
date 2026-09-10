@@ -6,6 +6,22 @@ export const api = {
     return res.json();
   },
 
+  async getFonts(): Promise<{ name: string; type: string; filename: string }[]> {
+    const res = await fetch('/api/fonts');
+    const data = await res.json();
+    return data.fonts || [];
+  },
+
+  async uploadFont(file: File): Promise<{ status: string; font_name: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/api/fonts/upload', {
+      method: 'POST',
+      body: formData
+    });
+    return res.json();
+  },
+
   async getShows(): Promise<Show[]> {
     const res = await fetch('/api/shows');
     const data = await res.json();

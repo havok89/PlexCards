@@ -36,8 +36,9 @@ FONTS_DIR = BASE_DIR / "cache" / "fonts"
 STILLS_DIR = BASE_DIR / "cache" / "stills"
 TEST_OUTPUT_DIR = BASE_DIR / "cache" / "test_output"
 PREVIEWS_DIR = BASE_DIR / "cache" / "previews"
+CUSTOM_FONTS_DIR = BASE_DIR / "custom_fonts"
 
-for directory in [DATA_DIR, CACHE_DIR, FONTS_DIR, STILLS_DIR, TEST_OUTPUT_DIR, PREVIEWS_DIR]:
+for directory in [DATA_DIR, CACHE_DIR, FONTS_DIR, STILLS_DIR, TEST_OUTPUT_DIR, PREVIEWS_DIR, CUSTOM_FONTS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
 DB_PATH = DATA_DIR / "plexposters.db"

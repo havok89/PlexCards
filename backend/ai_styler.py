@@ -32,7 +32,7 @@ class AIStyler:
                 "gradient_side": "left",
                 "gradient_width_pct": 48,
                 "gradient_opacity_pct": 90,
-                "subheading_icon": "dot",
+                "subheading_icon": "•",
                 "reasoning": "Default styling applied (Gemini key not configured)."
             }
 
@@ -46,15 +46,15 @@ Overview: {overview[:300] if overview else 'N/A'}
 User Style Direction: {user_prompt or 'Match the authentic tone, genre, and aesthetic of the series.'}
 
 Return ONLY a JSON object with these exact keys:
-- "font_family": Choose the best matching Google Font from ["Montserrat", "Oswald", "Orbitron", "Bebas Neue", "Playfair Display", "Cinzel", "Roboto"]
+- "font_family": The name of the best matching open-source font available (e.g. from Google Fonts / open repositories such as Montserrat, Oswald, Orbitron, Bebas Neue, Jost, Michroma, Bodoni Moda, Cinzel, Anton, Space Grotesk, Syne, Inter, Playfair Display, Cinzel Decorative, etc. If the show has an iconic proprietary font, provide the closest open-source equivalent). The server will automatically fetch it on the fly.
 - "font_color": Hex color code for the main episode title (e.g. "#FFFFFF", "#F4B84D", "#00E5FF", "#E50914", "#E0E0E0")
 - "subheading_color": Complementary hex color for season/episode text
 - "text_position": One of ["left_center", "left_bottom", "center_bottom", "right_center", "right_bottom"]
 - "gradient_side": "left", "bottom", or "right" (match the text_position: use "bottom" for bottom positions, "left" for left positions, "right" for right positions)
 - "gradient_width_pct": Integer between 40 and 55
 - "gradient_opacity_pct": Integer between 80 and 95
-- "subheading_icon": One of ["dot", "dash", "delta", "none"] (CRITICAL: only use "delta" if the show is specifically Star Trek or space sci-fi; otherwise default to "dot" or "dash" or "none")
-- "reasoning": 1 sentence explaining the creative design choice
+- "subheading_icon": A single character separator between season and episode text (e.g. "•", "-", ":", "|", ".", "/", "~", "=" or "" for none). NEVER suggest deltas or logos; always use a clean typographical character separator that complements the show's typography.
+- "reasoning": 1 sentence explaining the creative design choice (mentioning the font match)
 """
 
         try:

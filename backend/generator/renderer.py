@@ -4,7 +4,9 @@ from typing import Dict, Any, Optional, Tuple, List
 from PIL import Image, ImageDraw, ImageFont
 import requests
 
-from backend.config import FONTS_DIR
+from backend.config import FONTS_DIR, CUSTOM_FONTS_DIR
+import re
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +29,13 @@ def hex_to_rgb(hex_str: str) -> Tuple[int, int, int]:
 class TitleCardRenderer:
     def __init__(self):
         self.fonts_dir = FONTS_DIR
+        self.custom_fonts_dir = CUSTOM_FONTS_DIR
         self.fonts_dir.mkdir(parents=True, exist_ok=True)
+        self.custom_fonts_dir.mkdir(parents=True, exist_ok=True)
         self._ensure_default_fonts()
 
     def _ensure_default_fonts(self):
-        """Ensure standard fonts are cached."""
+        """Ensure standard fallback fonts are cached."""
         default_fonts = {
             "Oswald": "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald%5Bwght%5D.ttf",
             "Orbitron": "https://github.com/google/fonts/raw/main/ofl/orbitron/Orbitron%5Bwght%5D.ttf",
@@ -49,18 +53,88 @@ class TitleCardRenderer:
                 except Exception as e:
                     logger.warning(f"Could not download font {name}: {e}")
 
+    def download_open_source_font(self, font_name: str) -> Optional[Path]:
+        """Automatically fetch any open-source font on-the-fly via Google Fonts API."""
+        clean_name = font_name.replace(" ", "")
+        target_path = self.fonts_dir / f"{clean_name}.ttf"
+        if target_path.exists():
+            return target_path
+
+        encoded_name = quote(font_name)
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+        candidate_urls = [
+            f"https://fonts.googleapis.com/css2?family={encoded_name}:wght@700",
+            f"https://fonts.googleapis.com/css2?family={encoded_name}"
+        ]
+        for css_url in candidate_urls:
+            try:
+                r = requests.get(css_url, headers=headers, timeout=8)
+                if r.status_code == 200:
+                    match = re.search(r'src:\s*url\((https://[^)]+)\)', r.text)
+                    if match:
+                        font_url = match.group(1)
+                        font_res = requests.get(font_url, timeout=10)
+                        if font_res.status_code == 200:
+                            with open(target_path, "wb") as f:
+                                f.write(font_res.content)
+                            logger.info(f"✓ Automatically downloaded open-source font '{font_name}' to {target_path}")
+                            return target_path
+            except Exception as e:
+                logger.warning(f"Could not auto-download font '{font_name}' from {css_url}: {e}")
+        return None
+
     def get_font_path(self, font_family: str) -> Path:
-        clean_name = font_family.replace(" ", "")
-        local_path = self.fonts_dir / f"{clean_name}.ttf"
-        if local_path.exists():
-            return local_path
-            
+        """Find font in custom_fonts/ or cache/fonts/, or auto-download if open-source."""
+        clean_name = font_family.replace(" ", "").lower()
+
+        # 1. Check custom_fonts/ for .ttf or .otf (user-supplied)
+        for ext in [".ttf", ".otf"]:
+            for f in self.custom_fonts_dir.glob(f"*{ext}"):
+                if f.stem.replace(" ", "").lower() == clean_name:
+                    return f
+
+        # 2. Check cache/fonts/ for .ttf or .otf
+        for ext in [".ttf", ".otf"]:
+            for f in self.fonts_dir.glob(f"*{ext}"):
+                if f.stem.replace(" ", "").lower() == clean_name:
+                    return f
+
+        # 3. Attempt automated on-demand download
+        downloaded = self.download_open_source_font(font_family)
+        if downloaded and downloaded.exists():
+            return downloaded
+
+        # 4. Fallback to standard clean font
         for fallback in ["Montserrat.ttf", "Oswald.ttf", "BebasNeue.ttf"]:
             p = self.fonts_dir / fallback
             if p.exists():
                 return p
-                
+
         return Path("")
+
+    def get_available_fonts(self) -> List[Dict[str, Any]]:
+        """Return list of all locally installed and cached fonts."""
+        fonts = []
+        seen = set()
+
+        # Custom fonts
+        for ext in ["*.ttf", "*.otf"]:
+            for p in self.custom_fonts_dir.glob(ext):
+                name = p.stem
+                if name.lower() not in seen:
+                    seen.add(name.lower())
+                    fonts.append({"name": name, "type": "custom", "filename": p.name})
+
+        # Cached / standard fonts
+        for ext in ["*.ttf", "*.otf"]:
+            for p in self.fonts_dir.glob(ext):
+                name = p.stem
+                if name.lower() not in seen:
+                    seen.add(name.lower())
+                    fonts.append({"name": name, "type": "open_source", "filename": p.name})
+
+        fonts.sort(key=lambda x: x["name"])
+        return fonts
 
     def render(
         self,
@@ -151,15 +225,31 @@ class TitleCardRenderer:
 
         # 4. Render Subheading
         if show_subheading:
+            # Resolve separator character
+            raw_icon = str(sub_icon).strip() if sub_icon else ""
+            if raw_icon in ("dot", "bullet", "delta"):
+                sep_char = "•"
+            elif raw_icon == "dash":
+                sep_char = "—"
+            elif raw_icon == "none":
+                sep_char = ""
+            else:
+                sep_char = raw_icon
+
             # Measure subheading components
             s_bbox = draw.textbbox((0, 0), season_part, font=sub_font)
             s_w = s_bbox[2] - s_bbox[0]
             e_bbox = draw.textbbox((0, 0), episode_part, font=sub_font)
             e_w = e_bbox[2] - e_bbox[0]
             
-            icon_w = 20
-            icon_gap = 18
-            total_sub_w = s_w + icon_w + (icon_gap * 2) + e_w
+            gap = 16
+            if sep_char:
+                sep_bbox = draw.textbbox((0, 0), sep_char, font=sub_font)
+                sep_w = sep_bbox[2] - sep_bbox[0]
+                total_sub_w = s_w + gap + sep_w + gap + e_w
+            else:
+                sep_w = 0
+                total_sub_w = s_w + gap + e_w
             
             if text_pos == "center_bottom":
                 sub_start_x = (1920 - total_sub_w) // 2
@@ -172,32 +262,17 @@ class TitleCardRenderer:
             draw.text((sub_start_x + 2, sub_y + 2), season_part, font=sub_font, fill=(0, 0, 0, 200))
             draw.text((sub_start_x, sub_y), season_part, font=sub_font, fill=sub_color)
 
-            # Draw divider icon
-            icon_x = sub_start_x + s_w + icon_gap
-            if sub_icon == "delta":
-                icon_h = 24
-                icon_y = sub_y + 6
-                delta_pts = [
-                    (icon_x + icon_w / 2, icon_y),
-                    (icon_x + icon_w, icon_y + icon_h),
-                    (icon_x + icon_w / 2, icon_y + icon_h - 6),
-                    (icon_x, icon_y + icon_h)
-                ]
-                shadow_pts = [(x + 2, y + 2) for x, y in delta_pts]
-                draw.polygon(shadow_pts, fill=(0, 0, 0, 200))
-                draw.polygon(delta_pts, fill=sub_color)
-            elif sub_icon == "dot":
-                dot_r = 4
-                dot_cy = sub_y + 16
-                draw.ellipse([(icon_x + 6 - dot_r + 2, dot_cy - dot_r + 2), (icon_x + 6 + dot_r + 2, dot_cy + dot_r + 2)], fill=(0, 0, 0, 200))
-                draw.ellipse([(icon_x + 6 - dot_r, dot_cy - dot_r), (icon_x + 6 + dot_r, dot_cy + dot_r)], fill=sub_color)
-            elif sub_icon == "dash":
-                draw.line([(icon_x, sub_y + 16), (icon_x + 14, sub_y + 16)], fill=sub_color, width=3)
+            curr_x = sub_start_x + s_w + gap
+
+            # Draw separator character if present
+            if sep_char:
+                draw.text((curr_x + 2, sub_y + 2), sep_char, font=sub_font, fill=(0, 0, 0, 200))
+                draw.text((curr_x, sub_y), sep_char, font=sub_font, fill=sub_color)
+                curr_x += sep_w + gap
 
             # Draw Episode part
-            ep_x = icon_x + icon_w + icon_gap
-            draw.text((ep_x + 2, sub_y + 2), episode_part, font=sub_font, fill=(0, 0, 0, 200))
-            draw.text((ep_x, sub_y), episode_part, font=sub_font, fill=sub_color)
+            draw.text((curr_x + 2, sub_y + 2), episode_part, font=sub_font, fill=(0, 0, 0, 200))
+            draw.text((curr_x, sub_y), episode_part, font=sub_font, fill=sub_color)
 
         # 5. Render Title Lines
         for i, line in enumerate(lines):

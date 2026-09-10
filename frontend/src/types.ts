@@ -22,7 +22,7 @@ export interface Show {
   gradient_width_pct?: number;
   gradient_opacity_pct?: number;
   show_subheading?: number;
-  subheading_icon?: 'delta' | 'dot' | 'dash' | 'none';
+  subheading_icon?: string;
   ai_prompt?: string;
   has_custom_style?: number;
 }
@@ -45,7 +45,7 @@ export interface StyleConfig {
   gradient_width_pct: number;
   gradient_opacity_pct: number;
   show_subheading: number;
-  subheading_icon: 'delta' | 'dot' | 'dash' | 'none';
+  subheading_icon: string;
   ai_prompt?: string;
 }
 

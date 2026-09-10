@@ -13,11 +13,19 @@ import {
   ExternalLink,
   CheckCircle,
   Loader2,
-  LayoutTemplate
+  LayoutTemplate,
+  Upload
 } from 'lucide-react';
 
 // Global cache for preview object URLs across modal opens
 const previewBlobCache = new Map<string, string>();
+
+const normalizeSeparator = (sep?: string): string => {
+  if (!sep || sep === 'none') return '';
+  if (sep === 'dot' || sep === 'bullet' || sep === 'delta') return '•';
+  if (sep === 'dash') return '-';
+  return sep;
+};
 
 interface ShowStudioModalProps {
   show: Show;
@@ -43,6 +51,9 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
   const [aiReasoning, setAiReasoning] = useState<string>(show.ai_prompt || '');
+  const [availableFonts, setAvailableFonts] = useState<{ name: string; type: string; filename: string }[]>([]);
+  const [isUploadingFont, setIsUploadingFont] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [styleConfig, setStyleConfig] = useState<StyleConfig>({
     layout: show.layout || 'standard',
@@ -54,13 +65,18 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     gradient_width_pct: show.gradient_width_pct || 48,
     gradient_opacity_pct: show.gradient_opacity_pct || 88,
     show_subheading: show.show_subheading !== undefined ? show.show_subheading : 1,
-    subheading_icon: (show.subheading_icon as any) || 'dot'
+    subheading_icon: normalizeSeparator(show.subheading_icon)
   });
 
-  // Load details, episodes, and available sets
+  // Load details, episodes, fonts, and available sets
   useEffect(() => {
     let isMounted = true;
     setIsEpisodesLoading(true);
+
+    api.getFonts().then((fonts) => {
+      if (isMounted) setAvailableFonts(fonts);
+    });
+
     api.getShowDetails(show.rating_key).then((data) => {
       if (!isMounted) return;
       setActiveShow(data.show);
@@ -80,7 +96,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           gradient_width_pct: data.show.gradient_width_pct || 48,
           gradient_opacity_pct: data.show.gradient_opacity_pct || 88,
           show_subheading: data.show.show_subheading !== undefined ? data.show.show_subheading : 1,
-          subheading_icon: (data.show.subheading_icon as any) || 'dot'
+          subheading_icon: normalizeSeparator(data.show.subheading_icon)
         });
         if (data.show.ai_prompt) {
           setAiReasoning(data.show.ai_prompt);
@@ -91,6 +107,25 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
       isMounted = false;
     };
   }, [show.rating_key]);
+
+  const handleFontUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingFont(true);
+    try {
+      const res = await api.uploadFont(file);
+      const updatedFonts = await api.getFonts();
+      setAvailableFonts(updatedFonts);
+      setStyleConfig((prev) => ({ ...prev, font_family: res.font_name }));
+      alert(`✓ Custom font "${res.font_name}" uploaded and selected!`);
+    } catch (err) {
+      alert('Font upload failed: ' + err);
+    } finally {
+      setIsUploadingFont(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // Refresh preview with client and server caching
   useEffect(() => {
@@ -147,7 +182,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         font_family: 'Bebas Neue',
         font_color: '#FFFFFF',
         subheading_color: '#CCCCCC',
-        subheading_icon: 'dot',
+        subheading_icon: '•',
         gradient_side: 'bottom',
         gradient_width_pct: 50
       }));
@@ -158,7 +193,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         font_family: 'Montserrat',
         font_color: '#FFFFFF',
         subheading_color: '#A3A3A3',
-        subheading_icon: 'dash',
+        subheading_icon: '-',
         gradient_side: 'bottom',
         gradient_width_pct: 45
       }));
@@ -520,9 +555,31 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
                 </select>
               </div>
 
-              {/* Font Family */}
+              {/* Font Family & Custom Font Upload */}
               <div>
-                <label className="text-[11px] text-gray-400 block mb-1">Font Family</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] text-gray-400">Font Family</label>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingFont}
+                    className="text-[11px] text-brand-400 hover:text-brand-300 flex items-center gap-1 transition"
+                  >
+                    {isUploadingFont ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Upload className="w-3 h-3" />
+                    )}
+                    <span>Upload Font (.ttf / .otf)</span>
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".ttf,.otf"
+                    onChange={handleFontUpload}
+                    className="hidden"
+                  />
+                </div>
                 <select
                   value={styleConfig.font_family}
                   onChange={(e) =>
@@ -530,10 +587,20 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
                   }
                   className="w-full bg-dark-800 border border-gray-700 text-xs rounded-lg px-3 py-2 text-white focus:outline-none focus:border-brand-500"
                 >
-                  <option value="Montserrat">Montserrat (Clean & Modern Standard)</option>
-                  <option value="Oswald">Oswald (Bold Condensed - Strange New Worlds)</option>
-                  <option value="Orbitron">Orbitron (Futuristic / Sci-Fi)</option>
-                  <option value="Bebas Neue">Bebas Neue (Clean Tall Cinematic)</option>
+                  {/* If current font isn't in list (e.g. newly suggested by AI), render it dynamically */}
+                  {styleConfig.font_family &&
+                    !availableFonts.some(
+                      (f) => f.name.toLowerCase() === styleConfig.font_family?.toLowerCase()
+                    ) && (
+                      <option value={styleConfig.font_family}>
+                        {styleConfig.font_family} (Auto-downloaded / AI suggested)
+                      </option>
+                    )}
+                  {availableFonts.map((f) => (
+                    <option key={f.name} value={f.name}>
+                      {f.name} {f.type === 'custom' ? '★ (Custom Upload)' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -590,26 +657,61 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
                 </div>
               </div>
 
-              {/* Divider Icon */}
+              {/* Subheading Separator */}
               <div>
-                <label className="text-[11px] text-gray-400 block mb-1">
-                  Subheading Divider Icon
+                <label className="text-[11px] text-gray-400 block mb-1.5">
+                  Subheading Separator
                 </label>
-                <select
-                  value={styleConfig.subheading_icon}
-                  onChange={(e) =>
-                    setStyleConfig((prev) => ({
-                      ...prev,
-                      subheading_icon: e.target.value as any
-                    }))
-                  }
-                  className="w-full bg-dark-800 border border-gray-700 text-xs rounded-lg px-3 py-2 text-white focus:outline-none focus:border-brand-500"
-                >
-                  <option value="dot">Classic Dot (•) - Neutral Standard</option>
-                  <option value="dash">Modern Dash (—)</option>
-                  <option value="delta">Starfleet Delta (▲)</option>
-                  <option value="none">None</option>
-                </select>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    maxLength={4}
+                    value={styleConfig.subheading_icon}
+                    onChange={(e) =>
+                      setStyleConfig((prev) => ({
+                        ...prev,
+                        subheading_icon: e.target.value
+                      }))
+                    }
+                    placeholder="None"
+                    className="w-16 bg-dark-800 border border-gray-700 text-xs rounded-lg px-2 py-2 text-white font-mono text-center focus:outline-none focus:border-brand-500"
+                    title="Type any custom separator character"
+                  />
+                  <div className="flex flex-wrap items-center gap-1.5 flex-1">
+                    {[
+                      { label: '•', val: '•' },
+                      { label: ':', val: ':' },
+                      { label: '-', val: '-' },
+                      { label: '=', val: '=' },
+                      { label: '|', val: '|' },
+                      { label: '.', val: '.' },
+                      { label: '/', val: '/' },
+                      { label: '~', val: '~' },
+                      { label: 'None', val: '' }
+                    ].map((item) => {
+                      const isSelected = styleConfig.subheading_icon === item.val;
+                      return (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() =>
+                            setStyleConfig((prev) => ({
+                              ...prev,
+                              subheading_icon: item.val
+                            }))
+                          }
+                          className={`px-2.5 py-1 text-xs rounded border transition font-medium ${
+                            isSelected
+                              ? 'bg-brand-600 border-brand-500 text-white shadow-sm'
+                              : 'bg-dark-800 border-gray-700 text-gray-400 hover:text-white hover:bg-dark-750'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               {/* Gradient Sliders */}
