@@ -1,7 +1,7 @@
 import json
 import logging
 from typing import Dict, Any, Optional
-from backend.config import GEMINI_API_KEY
+from backend.config import GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ Return ONLY a JSON object with these exact keys:
         try:
             from google.genai import types
             response = self._client.models.generate_content(
-                model="gemini-3.6-flash",
+                model=GEMINI_MODEL,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
@@ -75,12 +75,12 @@ Return ONLY a JSON object with these exact keys:
             logger.error(f"Gemini style suggestion failed: {err_str}")
 
             is_503 = any(token in err_str for token in ["503", "UNAVAILABLE", "high demand", "Service Unavailable"])
-            is_quota = any(token in err_str for token in ["429", "RESOURCE_EXHAUSTED", "quota"])
+            is_quota = any(token in err_str for token in ["429", "RESOURCE_EXHAUSTED", "quota", "limit reached"])
 
             if is_503:
-                user_msg = "Gemini 3.6 Flash is currently experiencing high demand (503 Service Unavailable). Please try again in a few moments."
+                user_msg = f"Gemini ({GEMINI_MODEL}) is currently experiencing high demand (503 Service Unavailable). Please try again in a few moments."
             elif is_quota:
-                user_msg = "Gemini API rate limit reached (429 Quota Exceeded). Please wait a moment before trying again."
+                user_msg = f"Gemini API rate limit reached (429 Quota Exceeded for {GEMINI_MODEL}). Please wait a moment before trying again."
             else:
                 user_msg = f"Gemini style suggestion failed: {err_str[:150]}"
 

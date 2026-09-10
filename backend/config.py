@@ -19,6 +19,7 @@ MEDIUX_API_TOKEN = os.getenv("MEDIUX_API_TOKEN", "")
 
 # AI / LLM
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # Server & Schedules
