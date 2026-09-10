@@ -1,0 +1,670 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Show, Episode, StyleConfig, MediuxSet } from '../types';
+import { api } from '../api';
+import {
+  X,
+  Sliders,
+  Eye,
+  Zap,
+  Wand2,
+  Ban,
+  Sparkles,
+  FlaskConical,
+  ExternalLink,
+  CheckCircle,
+  Loader2,
+  LayoutTemplate
+} from 'lucide-react';
+
+// Global cache for preview object URLs across modal opens
+const previewBlobCache = new Map<string, string>();
+
+interface ShowStudioModalProps {
+  show: Show;
+  testMode: boolean;
+  onClose: () => void;
+  onShowUpdated: () => void;
+}
+
+export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
+  show,
+  testMode,
+  onClose,
+  onShowUpdated
+}) => {
+  const [activeShow, setActiveShow] = useState<Show>(show);
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [isEpisodesLoading, setIsEpisodesLoading] = useState<boolean>(true);
+  const [availableSets, setAvailableSets] = useState<MediuxSet[]>([]);
+  const [selectedEpIndex, setSelectedEpIndex] = useState<number>(0);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
+  const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
+  const [isApplying, setIsApplying] = useState<boolean>(false);
+  const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
+  const [aiPrompt, setAiPrompt] = useState<string>('');
+  const [aiReasoning, setAiReasoning] = useState<string>(show.ai_prompt || '');
+
+  const [styleConfig, setStyleConfig] = useState<StyleConfig>({
+    layout: show.layout || 'standard',
+    text_position: (show.text_position as any) || 'left_center',
+    font_family: show.font_family || 'Montserrat',
+    font_color: show.font_color || '#FFFFFF',
+    subheading_color: show.subheading_color || '#A3A3A3',
+    gradient_side: show.gradient_side || 'left',
+    gradient_width_pct: show.gradient_width_pct || 48,
+    gradient_opacity_pct: show.gradient_opacity_pct || 88,
+    show_subheading: show.show_subheading !== undefined ? show.show_subheading : 1,
+    subheading_icon: (show.subheading_icon as any) || 'dot'
+  });
+
+  // Load details, episodes, and available sets
+  useEffect(() => {
+    let isMounted = true;
+    setIsEpisodesLoading(true);
+    api.getShowDetails(show.rating_key).then((data) => {
+      if (!isMounted) return;
+      setActiveShow(data.show);
+      setEpisodes(data.episodes || []);
+      setAvailableSets(data.available_sets || []);
+      setIsEpisodesLoading(false);
+
+      // If backend auto-suggested a style on first load, apply it to state
+      if (data.show) {
+        setStyleConfig({
+          layout: data.show.layout || 'standard',
+          text_position: (data.show.text_position as any) || 'left_center',
+          font_family: data.show.font_family || 'Montserrat',
+          font_color: data.show.font_color || '#FFFFFF',
+          subheading_color: data.show.subheading_color || '#A3A3A3',
+          gradient_side: data.show.gradient_side || 'left',
+          gradient_width_pct: data.show.gradient_width_pct || 48,
+          gradient_opacity_pct: data.show.gradient_opacity_pct || 88,
+          show_subheading: data.show.show_subheading !== undefined ? data.show.show_subheading : 1,
+          subheading_icon: (data.show.subheading_icon as any) || 'dot'
+        });
+        if (data.show.ai_prompt) {
+          setAiReasoning(data.show.ai_prompt);
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [show.rating_key]);
+
+  // Refresh preview with client and server caching
+  useEffect(() => {
+    if (episodes.length === 0) return;
+    const ep = episodes[selectedEpIndex];
+    if (!ep) return;
+
+    // Check frontend in-memory cache first for instantaneous rendering
+    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}`;
+    if (previewBlobCache.has(cacheKey)) {
+      setPreviewUrl(previewBlobCache.get(cacheKey)!);
+      setIsPreviewLoading(false);
+      return;
+    }
+
+    let active = true;
+    setIsPreviewLoading(true);
+
+    api
+      .getPreviewBlob(activeShow.rating_key, {
+        season_number: ep.season_number,
+        episode_number: ep.episode_number,
+        episode_title: ep.title,
+        ...styleConfig
+      })
+      .then((blob) => {
+        if (!active) return;
+        const objectUrl = URL.createObjectURL(blob);
+        previewBlobCache.set(cacheKey, objectUrl);
+        setPreviewUrl(objectUrl);
+        setIsPreviewLoading(false);
+      })
+      .catch((err) => {
+        console.error('Preview error:', err);
+        if (active) setIsPreviewLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedEpIndex, episodes, styleConfig, activeShow.rating_key]);
+
+  const handleModeChange = async (newMode: 'auto' | 'generator_only' | 'ignored') => {
+    setActiveShow((prev) => ({ ...prev, mode: newMode }));
+    await api.setMode(activeShow.rating_key, newMode);
+    onShowUpdated();
+  };
+
+  const applyPreset = (preset: 'cinematic' | 'clean_bottom') => {
+    if (preset === 'cinematic') {
+      setStyleConfig((prev) => ({
+        ...prev,
+        text_position: 'left_bottom',
+        font_family: 'Bebas Neue',
+        font_color: '#FFFFFF',
+        subheading_color: '#CCCCCC',
+        subheading_icon: 'dot',
+        gradient_side: 'bottom',
+        gradient_width_pct: 50
+      }));
+    } else if (preset === 'clean_bottom') {
+      setStyleConfig((prev) => ({
+        ...prev,
+        text_position: 'center_bottom',
+        font_family: 'Montserrat',
+        font_color: '#FFFFFF',
+        subheading_color: '#A3A3A3',
+        subheading_icon: 'dash',
+        gradient_side: 'bottom',
+        gradient_width_pct: 45
+      }));
+    }
+  };
+
+  const handleAiSuggest = async () => {
+    setIsAiLoading(true);
+    setAiReasoning('');
+    try {
+      const suggestion = await api.askAi(activeShow.rating_key, aiPrompt);
+      if (suggestion.font_family) {
+        setStyleConfig((prev) => ({
+          ...prev,
+          font_family: suggestion.font_family,
+          font_color: suggestion.font_color || prev.font_color,
+          subheading_color: suggestion.subheading_color || prev.subheading_color,
+          subheading_icon: suggestion.subheading_icon || prev.subheading_icon,
+          text_position: suggestion.text_position || prev.text_position,
+          gradient_side: suggestion.gradient_side || prev.gradient_side,
+          gradient_width_pct: suggestion.gradient_width_pct || prev.gradient_width_pct
+        }));
+      }
+      setAiReasoning(suggestion.reasoning || '');
+    } catch (err) {
+      alert('AI styling error: ' + err);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleSaveStyle = async () => {
+    await api.saveStyle(activeShow.rating_key, {
+      ...styleConfig,
+      ai_prompt: aiReasoning
+    });
+    alert(`Style preset saved for "${activeShow.title}".`);
+    onShowUpdated();
+  };
+
+  const handleApply = async () => {
+    setIsApplying(true);
+    try {
+      const res = await api.applyCards(activeShow.rating_key);
+      if (res.test_mode) {
+        alert(
+          `🧪 Test Mode Active: Rendered ${res.updated_cards} cards locally into cache/test_output/. No changes were sent to Plex.`
+        );
+      } else {
+        alert(`Success! Updated ${res.updated_cards} cards in Plex.`);
+      }
+      onShowUpdated();
+    } catch (e) {
+      alert('Failed to apply cards: ' + e);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  const currentEp = episodes[selectedEpIndex];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div className="bg-dark-900 border border-gray-800 rounded-2xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+        {/* Modal Header */}
+        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-dark-850">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-brand-500/20 text-brand-500 flex items-center justify-center font-bold">
+              <Sliders className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                {activeShow.title}
+              </h2>
+              <p className="text-xs text-gray-400">
+                TMDb ID: {activeShow.tmdb_id} • {activeShow.year || ''}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleApply}
+              disabled={isApplying}
+              className={`${
+                testMode ? 'bg-amber-500 hover:bg-amber-600' : 'bg-brand-500 hover:bg-brand-600'
+              } disabled:opacity-50 text-dark-950 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition shadow-md`}
+            >
+              {testMode ? (
+                <FlaskConical className="w-4 h-4" />
+              ) : (
+                <CheckCircle className={`w-4 h-4 ${isApplying ? 'animate-bounce' : ''}`} />
+              )}
+              <span>
+                {isApplying
+                  ? 'Processing...'
+                  : testMode
+                  ? 'Simulate (Test Mode)'
+                  : 'Apply Cards to Plex'}
+              </span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-white p-2 rounded-lg transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Body */}
+        <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-gray-800">
+          {/* Left: Preview Canvas (7 cols) */}
+          <div className="lg:col-span-7 p-6 flex flex-col gap-4 bg-dark-950/40">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+                <Eye className="w-4 h-4 text-brand-500" /> Live Card Preview
+              </span>
+
+              {/* Episode Picker with Loading Spinner */}
+              <div className="flex items-center gap-2">
+                {isEpisodesLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-400 bg-dark-800 border border-gray-700 px-3 py-1.5 rounded-lg">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-500" />
+                    <span>Loading episodes...</span>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedEpIndex}
+                    onChange={(e) => setSelectedEpIndex(Number(e.target.value))}
+                    className="bg-dark-800 border border-gray-700 text-xs rounded-lg px-2.5 py-1.5 text-gray-300 focus:outline-none focus:border-brand-500 max-w-xs truncate"
+                  >
+                    {episodes.map((ep, idx) => (
+                      <option key={ep.rating_key} value={idx}>
+                        S{String(ep.season_number).padStart(2, '0')}E
+                        {String(ep.episode_number).padStart(2, '0')} - {ep.title}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+
+            {/* Preview Frame */}
+            <div className="relative aspect-video bg-dark-900 border border-gray-800 rounded-xl overflow-hidden shadow-2xl flex items-center justify-center">
+              {previewUrl ? (
+                <img
+                  src={previewUrl}
+                  alt="Title Card Preview"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-gray-500 text-xs gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
+                  <span>Loading preview still from TMDb...</span>
+                </div>
+              )}
+
+              {/* Subdued overlay indicator when rendering new style changes */}
+              {isPreviewLoading && previewUrl && (
+                <div className="absolute top-3 right-3 bg-dark-950/80 backdrop-blur-md px-2.5 py-1 rounded-full border border-gray-700 text-gray-300 text-[11px] flex items-center gap-1.5 shadow">
+                  <Loader2 className="w-3 h-3 animate-spin text-brand-500" />
+                  <span>Updating...</span>
+                </div>
+              )}
+            </div>
+
+            {currentEp && (
+              <div className="bg-dark-900 border border-gray-800 rounded-xl p-3 text-xs text-gray-400 flex items-center justify-between">
+                <span>
+                  Episode: <strong className="text-white">{currentEp.title}</strong>
+                </span>
+                <span>
+                  Season <strong className="text-white">{currentEp.season_number}</strong> • Episode{' '}
+                  <strong className="text-white">{currentEp.episode_number}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Controls & Studio (5 cols) */}
+          <div className="lg:col-span-5 p-6 flex flex-col gap-6 bg-dark-900 overflow-y-auto">
+            {/* Mode Switcher */}
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-gray-400 block mb-2">
+                Card Source Mode
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleModeChange('auto')}
+                  className={`border rounded-lg p-2 text-center text-xs font-medium transition ${
+                    activeShow.mode === 'auto'
+                      ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
+                      : 'bg-dark-800 border-gray-700 text-gray-400'
+                  }`}
+                >
+                  <Zap className="w-4 h-4 mx-auto mb-1" />
+                  Auto (MediUX)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleModeChange('generator_only')}
+                  className={`border rounded-lg p-2 text-center text-xs font-medium transition ${
+                    activeShow.mode === 'generator_only'
+                      ? 'bg-purple-500/20 border-purple-500 text-purple-300'
+                      : 'bg-dark-800 border-gray-700 text-gray-400'
+                  }`}
+                >
+                  <Wand2 className="w-4 h-4 mx-auto mb-1" />
+                  Generator Only
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleModeChange('ignored')}
+                  className={`border rounded-lg p-2 text-center text-xs font-medium transition ${
+                    activeShow.mode === 'ignored'
+                      ? 'bg-gray-700 border-gray-500 text-white'
+                      : 'bg-dark-800 border-gray-700 text-gray-400'
+                  }`}
+                >
+                  <Ban className="w-4 h-4 mx-auto mb-1" />
+                  Ignored
+                </button>
+              </div>
+
+              {activeShow.mode === 'auto' && (
+                <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
+                  Checks MediUX for sets that cover all your seasons. Automatically fills missing or newly aired episodes with the generator and updates once uploaded.
+                </p>
+              )}
+              {activeShow.mode === 'generator_only' && (
+                <p className="text-[11px] text-purple-400/90 mt-2 leading-relaxed">
+                  Never polls MediUX. Automatically creates cards for every episode using the style preset below.
+                </p>
+              )}
+            </div>
+
+            {/* MediUX Sets (when in Auto mode) */}
+            {activeShow.mode === 'auto' && (
+              <div className="border-t border-gray-800 pt-4">
+                <label className="text-xs font-semibold uppercase tracking-wider text-gray-400 block mb-2">
+                  Detected MediUX Sets ({availableSets.length})
+                </label>
+                <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                  {availableSets.map((set) => (
+                    <div
+                      key={set.id}
+                      className="bg-dark-850 border border-gray-800 hover:border-gray-700 rounded-lg p-2.5 flex items-center justify-between text-xs"
+                    >
+                      <div>
+                        <span className="font-semibold text-white">{set.creator}</span>
+                        <span className="text-gray-500 text-[11px] block">
+                          {set.total_cards} cards • Seasons: {set.seasons_covered.join(', ')}
+                        </span>
+                      </div>
+                      <a
+                        href={set.set_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-brand-500 hover:underline text-[11px] flex items-center gap-1"
+                      >
+                        View <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  ))}
+                  {availableSets.length === 0 && (
+                    <div className="text-xs text-gray-500 italic p-1">
+                      No sets with title cards detected on MediUX. Generator fallback will be used!
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Generator Studio */}
+            <div className="border-t border-gray-800 pt-4 flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  Generator Styling
+                </label>
+                <div className="flex items-center gap-1 text-[11px]">
+                  <button
+                    onClick={() => applyPreset('cinematic')}
+                    className="px-2 py-0.5 rounded bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  >
+                    Cinematic
+                  </button>
+                  <button
+                    onClick={() => applyPreset('clean_bottom')}
+                    className="px-2 py-0.5 rounded bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  >
+                    Bottom Center
+                  </button>
+                </div>
+              </div>
+
+              {/* AI Assistant */}
+              <div className="bg-dark-850 border border-purple-500/30 rounded-xl p-3 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-purple-300 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-400" /> AI Style Assistant
+                  </span>
+                  <span className="text-[10px] text-gray-500">Gemini 3.6 Flash</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g., Gritty thriller with bold white font..."
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAiSuggest()}
+                    className="flex-1 bg-dark-900 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                  />
+                  <button
+                    onClick={handleAiSuggest}
+                    disabled={isAiLoading}
+                    className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+                  >
+                    {isAiLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5" />
+                    )}
+                    <span>Suggest</span>
+                  </button>
+                </div>
+                {aiReasoning && (
+                  <p className="text-[11px] text-gray-400 italic mt-1 leading-relaxed">
+                    {aiReasoning}
+                  </p>
+                )}
+              </div>
+
+              {/* Request 3: Text Positioning */}
+              <div>
+                <label className="text-[11px] text-gray-400 block mb-1">Text Position</label>
+                <select
+                  value={styleConfig.text_position}
+                  onChange={(e) => {
+                    const pos = e.target.value as any;
+                    const grad = pos.includes('bottom') ? 'bottom' : pos.includes('right') ? 'right' : 'left';
+                    setStyleConfig((prev) => ({
+                      ...prev,
+                      text_position: pos,
+                      gradient_side: grad
+                    }));
+                  }}
+                  className="w-full bg-dark-800 border border-gray-700 text-xs rounded-lg px-3 py-2 text-white focus:outline-none focus:border-brand-500"
+                >
+                  <option value="left_center">Left Middle (e.g. Strange New Worlds)</option>
+                  <option value="left_bottom">Bottom Left (Cinematic)</option>
+                  <option value="center_bottom">Bottom Center (Classic Streaming)</option>
+                  <option value="right_center">Right Middle</option>
+                  <option value="right_bottom">Bottom Right</option>
+                </select>
+              </div>
+
+              {/* Font Family */}
+              <div>
+                <label className="text-[11px] text-gray-400 block mb-1">Font Family</label>
+                <select
+                  value={styleConfig.font_family}
+                  onChange={(e) =>
+                    setStyleConfig((prev) => ({ ...prev, font_family: e.target.value }))
+                  }
+                  className="w-full bg-dark-800 border border-gray-700 text-xs rounded-lg px-3 py-2 text-white focus:outline-none focus:border-brand-500"
+                >
+                  <option value="Montserrat">Montserrat (Clean & Modern Standard)</option>
+                  <option value="Oswald">Oswald (Bold Condensed - Strange New Worlds)</option>
+                  <option value="Orbitron">Orbitron (Futuristic / Sci-Fi)</option>
+                  <option value="Bebas Neue">Bebas Neue (Clean Tall Cinematic)</option>
+                </select>
+              </div>
+
+              {/* Colors */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-gray-400 block mb-1">Title Color</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={styleConfig.font_color}
+                      onChange={(e) =>
+                        setStyleConfig((prev) => ({ ...prev, font_color: e.target.value }))
+                      }
+                      className="w-8 h-8 rounded border border-gray-700 bg-transparent cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={styleConfig.font_color}
+                      onChange={(e) =>
+                        setStyleConfig((prev) => ({ ...prev, font_color: e.target.value }))
+                      }
+                      className="w-full bg-dark-800 border border-gray-700 text-xs rounded px-2 py-1.5 text-white font-mono uppercase"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-gray-400 block mb-1">Subheading Color</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={styleConfig.subheading_color}
+                      onChange={(e) =>
+                        setStyleConfig((prev) => ({
+                          ...prev,
+                          subheading_color: e.target.value
+                        }))
+                      }
+                      className="w-8 h-8 rounded border border-gray-700 bg-transparent cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={styleConfig.subheading_color}
+                      onChange={(e) =>
+                        setStyleConfig((prev) => ({
+                          ...prev,
+                          subheading_color: e.target.value
+                        }))
+                      }
+                      className="w-full bg-dark-800 border border-gray-700 text-xs rounded px-2 py-1.5 text-white font-mono uppercase"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Divider Icon */}
+              <div>
+                <label className="text-[11px] text-gray-400 block mb-1">
+                  Subheading Divider Icon
+                </label>
+                <select
+                  value={styleConfig.subheading_icon}
+                  onChange={(e) =>
+                    setStyleConfig((prev) => ({
+                      ...prev,
+                      subheading_icon: e.target.value as any
+                    }))
+                  }
+                  className="w-full bg-dark-800 border border-gray-700 text-xs rounded-lg px-3 py-2 text-white focus:outline-none focus:border-brand-500"
+                >
+                  <option value="dot">Classic Dot (•) - Neutral Standard</option>
+                  <option value="dash">Modern Dash (—)</option>
+                  <option value="delta">Starfleet Delta (▲)</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+
+              {/* Gradient Sliders */}
+              <div className="space-y-3">
+                <div>
+                  <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                    <span>Gradient Width / Height</span>
+                    <span>{styleConfig.gradient_width_pct}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="30"
+                    max="65"
+                    value={styleConfig.gradient_width_pct}
+                    onChange={(e) =>
+                      setStyleConfig((prev) => ({
+                        ...prev,
+                        gradient_width_pct: Number(e.target.value)
+                      }))
+                    }
+                    className="w-full accent-brand-500 bg-dark-800"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                    <span>Gradient Opacity</span>
+                    <span>{styleConfig.gradient_opacity_pct}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="60"
+                    max="100"
+                    value={styleConfig.gradient_opacity_pct}
+                    onChange={(e) =>
+                      setStyleConfig((prev) => ({
+                        ...prev,
+                        gradient_opacity_pct: Number(e.target.value)
+                      }))
+                    }
+                    className="w-full accent-brand-500 bg-dark-800"
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={handleSaveStyle}
+                className="w-full bg-dark-800 hover:bg-dark-700 border border-gray-700 text-white font-semibold py-2 rounded-lg text-xs transition mt-2"
+              >
+                Save Style Preset
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
