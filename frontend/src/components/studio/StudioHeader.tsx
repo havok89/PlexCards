@@ -48,6 +48,27 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-gray-400 mt-0.5 flex-wrap">
               {show.year && <span>{show.year}</span>}
               {show.year && <span>•</span>}
+              {show.status && (
+                <>
+                  <span
+                    className={`inline-flex items-center gap-1 font-medium px-1.5 py-0.5 rounded text-[10px] sm:text-[11px] ${
+                      show.status.toLowerCase() !== 'ended' && show.status.toLowerCase() !== 'canceled' && show.status.toLowerCase() !== 'cancelled'
+                        ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
+                        : 'bg-gray-800 text-gray-400 border border-gray-700/80'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        show.status.toLowerCase() !== 'ended' && show.status.toLowerCase() !== 'canceled' && show.status.toLowerCase() !== 'cancelled'
+                          ? 'bg-cyan-400'
+                          : 'bg-gray-500'
+                      }`}
+                    />
+                    {show.status === 'Returning Series' ? 'Continuing' : show.status}
+                  </span>
+                  <span>•</span>
+                </>
+              )}
               {show.tmdb_id ? (
                 <div className="flex items-center gap-1 bg-dark-800 border border-gray-700/80 px-1.5 py-0.5 rounded text-[10px] sm:text-[11px]">
                   <a

@@ -5,6 +5,7 @@ interface FilterBarProps {
   filterMode: string;
   onFilterChange: (mode: string) => void;
   totalCount: number;
+  continuingCount?: number;
   testMode: boolean;
   tvLibrary: string;
 }
@@ -13,6 +14,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   filterMode,
   onFilterChange,
   totalCount,
+  continuingCount,
   testMode,
   tvLibrary
 }) => {
@@ -30,6 +32,17 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             }`}
           >
             All ({totalCount})
+          </button>
+          <button
+            onClick={() => onFilterChange('continuing')}
+            className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md text-[11px] sm:text-xs font-medium border transition flex items-center gap-1 sm:gap-1.5 ${
+              filterMode === 'continuing'
+                ? 'bg-dark-800 text-white border-cyan-500'
+                : 'text-gray-400 hover:text-gray-200 border-transparent'
+            }`}
+          >
+            <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-cyan-400 shrink-0"></span>
+            <span>Continuing{continuingCount !== undefined ? ` (${continuingCount})` : ''}</span>
           </button>
           <button
             onClick={() => onFilterChange('auto')}

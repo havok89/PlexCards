@@ -43,7 +43,7 @@ app.add_middleware(
 async def auth_middleware(request: Request, call_next):
     """Intercept requests to protect /api/ routes when ENABLE_AUTH is active."""
     path = request.url.path
-    if config.ENABLE_AUTH and path.startswith("/api/") and not path.startswith("/api/auth") and path != "/api/config" and not path.endswith("/poster"):
+    if config.ENABLE_AUTH and path.startswith("/api/") and not path.startswith("/api/auth") and path != "/api/config" and "/poster" not in path:
         token = request.cookies.get(SESSION_COOKIE_NAME)
         if not token:
             auth_header = request.headers.get("Authorization")
@@ -69,6 +69,8 @@ renderer = TitleCardRenderer()
 def on_startup():
     start_scheduler()
     plex_listener.start()
+    import threading
+    threading.Thread(target=sync_mgr.sync_show_statuses, daemon=True).start()
     logger.info("PlexPosters API and Live AlertListener started.")
 
 @app.on_event("shutdown")
@@ -227,21 +229,30 @@ def list_shows():
     shows = get_all_shows()
     for s in shows:
         if s.get("poster_url"):
-            s["poster_url"] = f"/api/shows/{s['rating_key']}/poster"
+            s["poster_url"] = f"/api/shows/{s['rating_key']}/poster.jpg"
     return {"shows": shows}
 
 @app.get("/api/shows/{rating_key}/poster")
-def get_show_poster(rating_key: str):
-    """Serve or proxy the show poster with local disk caching for reliable remote access."""
-    from fastapi.responses import FileResponse
+@app.get("/api/shows/{rating_key}/poster.jpg")
+def get_show_poster(rating_key: str, request: Request):
+    """Serve optimized, compressed show poster with local disk caching and Cloudflare-friendly headers."""
+    from fastapi.responses import FileResponse, Response
+    from PIL import Image
     import requests
 
     poster_path = POSTERS_DIR / f"{rating_key}.jpg"
+    headers = {
+        "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
+        "ETag": f'"{rating_key}"'
+    }
+
     if poster_path.exists():
+        if request.headers.get("if-none-match") == f'"{rating_key}"':
+            return Response(status_code=304, headers=headers)
         return FileResponse(
             poster_path,
             media_type="image/jpeg",
-            headers={"Cache-Control": "public, max-age=86400"}
+            headers=headers
         )
 
     show = get_show(rating_key)
@@ -269,12 +280,22 @@ def get_show_poster(rating_key: str):
     try:
         r = requests.get(target_url, timeout=10)
         if r.status_code == 200:
-            with open(poster_path, "wb") as f:
-                f.write(r.content)
+            # Resize to web-optimized thumbnail (max width 420px, ~40-60KB) to save 98% bandwidth on Cloudflare Tunnel
+            try:
+                with Image.open(io.BytesIO(r.content)) as im:
+                    if im.width > 420:
+                        new_h = int(im.height * (420.0 / im.width))
+                        im = im.resize((420, new_h), Image.Resampling.LANCZOS)
+                    im.convert("RGB").save(poster_path, format="JPEG", quality=82, optimize=True)
+            except Exception as resize_err:
+                logger.warning(f"Could not resize poster image: {resize_err}, saving raw.")
+                with open(poster_path, "wb") as f:
+                    f.write(r.content)
+
             return FileResponse(
                 poster_path,
-                media_type=r.headers.get("content-type", "image/jpeg"),
-                headers={"Cache-Control": "public, max-age=86400"}
+                media_type="image/jpeg",
+                headers=headers
             )
         else:
             logger.warning(f"Failed to fetch poster from {target_url}: HTTP {r.status_code}")
@@ -436,7 +457,8 @@ def match_show_tmdb(rating_key: str, payload: dict = Body(...)):
         except Exception:
             pass
 
-    update_show_tmdb_id(rating_key, tmdb_id, poster_url=poster_url, backdrop_url=backdrop_url)
+    show_status = details.get("status") if details else None
+    update_show_tmdb_id(rating_key, tmdb_id, poster_url=poster_url, backdrop_url=backdrop_url, status=show_status)
     updated_show = get_show(rating_key)
     if updated_show and updated_show.get("poster_url"):
         updated_show["poster_url"] = f"/api/shows/{rating_key}/poster"

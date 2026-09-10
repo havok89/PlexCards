@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 class TMDbClient:
     BASE_URL = "https://api.themoviedb.org/3"
     IMAGE_BASE = "https://image.tmdb.org/t/p/original"
+    POSTER_BASE = "https://image.tmdb.org/t/p/w500"
 
     def __init__(self, api_key: str = TMDB_API_KEY):
         self.api_key = api_key
@@ -36,8 +37,10 @@ class TMDbClient:
                     "overview": data.get("overview"),
                     "genres": [g["name"] for g in data.get("genres", [])],
                     "backdrop_url": f"{self.IMAGE_BASE}{data.get('backdrop_path')}" if data.get('backdrop_path') else None,
-                    "poster_url": f"{self.IMAGE_BASE}{data.get('poster_path')}" if data.get('poster_path') else None,
-                    "logo_url": f"{self.IMAGE_BASE}{logo_path}" if logo_path else None
+                    "poster_url": f"{self.POSTER_BASE}{data.get('poster_path')}" if data.get('poster_path') else None,
+                    "logo_url": f"{self.IMAGE_BASE}{logo_path}" if logo_path else None,
+                    "status": data.get("status", "Returning Series"),
+                    "in_production": data.get("in_production", True)
                 }
         except Exception as e:
             logger.error(f"Error fetching TMDb show {tmdb_id}: {e}")

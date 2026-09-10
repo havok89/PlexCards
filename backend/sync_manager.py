@@ -138,7 +138,51 @@ class SyncManager:
             conn.close()
 
         logger.info("Library index complete.")
+        try:
+            self.sync_show_statuses()
+        except Exception as e:
+            logger.warning(f"Could not complete TMDb status sync: {e}")
         return len(shows)
+
+    def sync_show_statuses(self):
+        """Fetch and update TV show broadcast status (Returning Series, Ended, Canceled) from TMDb."""
+        from concurrent.futures import ThreadPoolExecutor
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT rating_key, tmdb_id FROM shows WHERE tmdb_id IS NOT NULL")
+        shows_to_check = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+
+        if not shows_to_check or not self.tmdb.api_key:
+            return
+
+        def _fetch_status(item):
+            rk, tid = item["rating_key"], item["tmdb_id"]
+            try:
+                url = f"{self.tmdb.BASE_URL}/tv/{tid}?api_key={self.tmdb.api_key}"
+                r = requests.get(url, timeout=6)
+                if r.status_code == 200:
+                    d = r.json()
+                    st = d.get("status")
+                    if st:
+                        return rk, st
+            except Exception:
+                pass
+            return rk, None
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(_fetch_status, shows_to_check))
+
+        conn = get_db()
+        cursor = conn.cursor()
+        updated_count = 0
+        for rk, st in results:
+            if st:
+                cursor.execute("UPDATE shows SET status = ? WHERE rating_key = ?", (st, str(rk)))
+                updated_count += 1
+        conn.commit()
+        conn.close()
+        logger.info(f"Updated status for {updated_count} shows from TMDb.")
 
     def sync_show_generator(self, rating_key: str, force_all: bool = True, force_live: bool = False):
         """Generator that yields progress events while updating cards and posters for a show."""

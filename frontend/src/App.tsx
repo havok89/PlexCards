@@ -99,10 +99,25 @@ export const App: React.FC = () => {
     }
   };
 
+  const isShowContinuing = (status?: string): boolean => {
+    if (!status) return true;
+    const s = status.trim().toLowerCase();
+    return s !== 'ended' && s !== 'canceled' && s !== 'cancelled';
+  };
+
+  const continuingCount = useMemo(() => {
+    return shows.filter((s) => isShowContinuing(s.status)).length;
+  }, [shows]);
+
   const filteredShows = useMemo(() => {
     return shows.filter((s) => {
       const matchesSearch = s.title.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesFilter = filterMode === 'all' || s.mode === filterMode;
+      let matchesFilter = true;
+      if (filterMode === 'continuing') {
+        matchesFilter = isShowContinuing(s.status);
+      } else if (filterMode !== 'all') {
+        matchesFilter = s.mode === filterMode;
+      }
       return matchesSearch && matchesFilter;
     });
   }, [shows, searchQuery, filterMode]);
@@ -137,6 +152,7 @@ export const App: React.FC = () => {
         filterMode={filterMode}
         onFilterChange={setFilterMode}
         totalCount={shows.length}
+        continuingCount={continuingCount}
         testMode={config.test_mode}
         tvLibrary={config.tv_library}
       />

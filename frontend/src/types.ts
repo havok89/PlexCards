@@ -8,6 +8,7 @@ export interface Show {
   total_seasons: number;
   total_episodes: number;
   mode: 'auto' | 'generator_only' | 'mediux_locked' | 'ignored';
+  status?: string;
   mediux_set_url?: string;
   mediux_cards_count?: number;
   generator_cards_count?: number;

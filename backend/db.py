@@ -24,11 +24,18 @@ def init_db():
         total_episodes INTEGER DEFAULT 0,
         mode TEXT DEFAULT 'ignored', -- 'auto', 'generator_only', 'mediux_locked', 'ignored'
         mediux_set_url TEXT,
+        status TEXT DEFAULT 'Returning Series',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
     
+    # Safe column migrations for shows table
+    cursor.execute("PRAGMA table_info(shows)")
+    show_columns = [col[1] for col in cursor.fetchall()]
+    if "status" not in show_columns:
+        cursor.execute("ALTER TABLE shows ADD COLUMN status TEXT DEFAULT 'Returning Series'")
+
     # Show styling configuration (for generator)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS show_styles (
@@ -154,27 +161,47 @@ def upsert_show(show_data: Dict[str, Any]):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-    INSERT INTO shows (rating_key, tmdb_id, title, year, poster_url, backdrop_url, total_seasons, total_episodes, mode, mediux_set_url, updated_at)
+    INSERT INTO shows (rating_key, tmdb_id, title, year, poster_url, backdrop_url, total_seasons, total_episodes, mode, mediux_set_url, status, updated_at)
     VALUES (:rating_key, :tmdb_id, :title, :year, :poster_url, :backdrop_url, :total_seasons, :total_episodes, 
             COALESCE((SELECT mode FROM shows WHERE rating_key = :rating_key), :default_mode),
             COALESCE((SELECT mediux_set_url FROM shows WHERE rating_key = :rating_key), NULL),
+            COALESCE(:status, (SELECT status FROM shows WHERE rating_key = :rating_key), 'Returning Series'),
             CURRENT_TIMESTAMP)
     ON CONFLICT(rating_key) DO UPDATE SET
         tmdb_id = excluded.tmdb_id,
         title = excluded.title,
         year = excluded.year,
-        poster_url = excluded.poster_url,
-        backdrop_url = excluded.backdrop_url,
+        poster_url = COALESCE(excluded.poster_url, shows.poster_url),
+        backdrop_url = COALESCE(excluded.backdrop_url, shows.backdrop_url),
         total_seasons = excluded.total_seasons,
         total_episodes = excluded.total_episodes,
+        status = COALESCE(excluded.status, shows.status),
         updated_at = CURRENT_TIMESTAMP
-    """, {**show_data, "default_mode": default_mode})
+    """, {
+        "rating_key": str(show_data["rating_key"]),
+        "tmdb_id": show_data.get("tmdb_id"),
+        "title": show_data["title"],
+        "year": show_data.get("year"),
+        "poster_url": show_data.get("poster_url"),
+        "backdrop_url": show_data.get("backdrop_url"),
+        "total_seasons": show_data.get("total_seasons", 0),
+        "total_episodes": show_data.get("total_episodes", 0),
+        "default_mode": default_mode,
+        "status": show_data.get("status")
+    })
     
     # Ensure default style exists
     cursor.execute("""
     INSERT OR IGNORE INTO show_styles (rating_key) VALUES (:rating_key)
-    """, {"rating_key": show_data["rating_key"]})
+    """, {"rating_key": str(show_data["rating_key"])})
     
+    conn.commit()
+    conn.close()
+
+def update_show_status(rating_key: str, status: str):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE shows SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE rating_key = ?", (status, str(rating_key)))
     conn.commit()
     conn.close()
 
@@ -303,35 +330,21 @@ def update_show_tmdb_id(
     rating_key: str, 
     tmdb_id: Optional[int], 
     poster_url: Optional[str] = None, 
-    backdrop_url: Optional[str] = None
+    backdrop_url: Optional[str] = None,
+    status: Optional[str] = None
 ):
-    """Update TMDb ID and optionally poster/backdrop URLs for a show."""
+    """Update TMDb ID and optionally poster/backdrop URLs and status for a show."""
     conn = get_db()
     cursor = conn.cursor()
-    if poster_url and backdrop_url:
-        cursor.execute("""
-        UPDATE shows 
-        SET tmdb_id = ?, poster_url = COALESCE(?, poster_url), backdrop_url = COALESCE(?, backdrop_url), updated_at = CURRENT_TIMESTAMP
-        WHERE rating_key = ?
-        """, (tmdb_id, poster_url, backdrop_url, rating_key))
-    elif poster_url:
-        cursor.execute("""
-        UPDATE shows 
-        SET tmdb_id = ?, poster_url = COALESCE(?, poster_url), updated_at = CURRENT_TIMESTAMP
-        WHERE rating_key = ?
-        """, (tmdb_id, poster_url, rating_key))
-    elif backdrop_url:
-        cursor.execute("""
-        UPDATE shows 
-        SET tmdb_id = ?, backdrop_url = COALESCE(?, backdrop_url), updated_at = CURRENT_TIMESTAMP
-        WHERE rating_key = ?
-        """, (tmdb_id, backdrop_url, rating_key))
-    else:
-        cursor.execute("""
-        UPDATE shows 
-        SET tmdb_id = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE rating_key = ?
-        """, (tmdb_id, rating_key))
+    cursor.execute("""
+    UPDATE shows 
+    SET tmdb_id = ?, 
+        poster_url = COALESCE(?, poster_url), 
+        backdrop_url = COALESCE(?, backdrop_url), 
+        status = COALESCE(?, status),
+        updated_at = CURRENT_TIMESTAMP
+    WHERE rating_key = ?
+    """, (tmdb_id, poster_url, backdrop_url, status, rating_key))
     conn.commit()
     conn.close()
 

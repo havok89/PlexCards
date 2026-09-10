@@ -32,11 +32,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Film className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <div className="hidden sm:block min-w-0">
-            <h1 className="text-base sm:text-xl font-bold tracking-tight text-white flex items-center gap-1.5 sm:gap-2">
-              <span>PlexPosters</span>
-              <span className="text-xs px-1.5 py-0.5 rounded-full bg-brand-500/20 text-brand-500 border border-brand-500/30">
-                v1.0
-              </span>
+            <h1 className="text-base sm:text-xl font-bold tracking-tight text-white">
+              PlexPosters
             </h1>
             <p className="text-xs text-gray-400 hidden md:block truncate">Automated MediUX & Smart Title Card Generator</p>
           </div>
