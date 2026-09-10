@@ -26,6 +26,10 @@
    * **✨ AI Style Assistant (Powered by Gemini):** Give natural language prompts (e.g. *"dark moody crime thriller with white serif font"*) to auto-tune fonts, palettes, and layouts.
    * Direct "Apply to Plex" button to update episode artwork via Plex API with a single click.
 
+5. **Real-Time Plex WebSocket Listener:**
+   * Automatically connects to Plex's notification stream to detect newly added episodes the moment they finish scanning.
+   * Instantly renders and applies title cards without waiting for a scheduled poll.
+
 ---
 
 ## 🚀 Quick Start
@@ -41,6 +45,8 @@ Key settings:
 * `PLEX_TV_LIBRARY`: Name of your TV library section (e.g., `TV shows`)
 * `TMDB_API_KEY`: Free Developer API key from [themoviedb.org](https://www.themoviedb.org/)
 * `GEMINI_API_KEY`: *(Optional)* For AI typography and styling recommendations
+* `GEMINI_MODEL`: *(Optional)* Gemini model (defaults to `gemini-3.5-flash-lite` with generous 500 requests/day free quota)
+* `ENABLE_AUTH`: *(Optional)* Set to `true` to require Plex OAuth sign-in to access the UI and API
 * `TEST_MODE`: `true` (Default, keeps Plex safe while testing by preventing server uploads)
 
 ### 2. Running with Docker (Recommended) 🐳
