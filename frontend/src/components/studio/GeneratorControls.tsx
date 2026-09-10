@@ -2,30 +2,81 @@ import React, { useRef } from 'react';
 import { Sparkles, Loader2, Upload, CheckCircle } from 'lucide-react';
 import { StyleConfig } from '../../types';
 
-export const getSubheadingPreview = (fmt?: string, icon?: string): string => {
+export const getSubheadingPreview = (
+  fmt?: string,
+  icon?: string,
+  casing?: 'upper' | 'title' | 'lower'
+): string => {
   const sep = icon === 'none' ? '' : (icon || '•');
+  let result = '';
+
+  const applyCasing = (str: string) => {
+    if (casing === 'title') {
+      return str
+        .toLowerCase()
+        .replace(/\b([a-z])/g, (m) => m.toUpperCase())
+        .replace(/\bS(\d+)\b/gi, (_, d) => `S${d.padStart(2, '0')}`)
+        .replace(/\bE(\d+)\b/gi, (_, d) => `E${d.padStart(2, '0')}`);
+    } else if (casing === 'lower') {
+      return str.toLowerCase();
+    }
+    return str.toUpperCase();
+  };
+
   switch (fmt) {
     case 'season_word_ep_word':
-      return `SEASON ONE ${sep ? sep + ' ' : ''}EPISODE FIVE`.trim();
+      result = `SEASON ONE ${sep ? sep + ' ' : ''}EPISODE FIVE`.trim();
+      break;
     case 'season_num_ep_num':
-      return `SEASON 1 ${sep ? sep + ' ' : ''}EPISODE 5`.trim();
+      result = `SEASON 1 ${sep ? sep + ' ' : ''}EPISODE 5`.trim();
+      break;
+    case 's_pad_ep_num':
+      result = `S01 ${sep ? sep + ' ' : ''}EPISODE 5`.trim();
+      break;
+    case 's_pad_ep_pad':
+      result = `S01 ${sep ? sep + ' ' : ''}EPISODE 05`.trim();
+      break;
     case 's_pad_e_pad':
-      return `S01 ${sep ? sep + ' ' : ''}E05`.trim();
+      result = `S01 ${sep ? sep + ' ' : ''}E05`.trim();
+      break;
     case 'compact_pad':
-      return 'S01E05';
+      result = 'S01E05';
+      break;
     case 'ep_num':
-      return 'EPISODE 5';
+      result = 'EPISODE 5';
+      break;
     case 'ep_word':
-      return 'EPISODE FIVE';
+      result = 'EPISODE FIVE';
+      break;
     case 'e_pad':
-      return 'E05';
+      result = 'E05';
+      break;
     case 'season_num':
-      return 'SEASON 1';
+      result = 'SEASON 1';
+      break;
     case 'season_word':
-      return 'SEASON ONE';
+      result = 'SEASON ONE';
+      break;
     default:
-      return `SEASON 1 ${sep ? sep + ' ' : ''}EPISODE 5`.trim();
+      if (fmt && fmt.includes('{')) {
+        result = fmt
+          .replace(/\{season\}|\{s_num\}|\{s\}/gi, '1')
+          .replace(/\{season_pad\}|\{s_pad\}/gi, '01')
+          .replace(/\{season_word\}|\{s_word\}/gi, 'ONE')
+          .replace(/\{episode\}|\{e_num\}|\{e\}/gi, '5')
+          .replace(/\{episode_pad\}|\{e_pad\}/gi, '05')
+          .replace(/\{episode_word\}|\{e_word\}/gi, 'FIVE')
+          .replace(/\{icon\}|\{sep\}/gi, sep)
+          .trim();
+      } else if (fmt) {
+        result = fmt;
+      } else {
+        result = `SEASON 1 ${sep ? sep + ' ' : ''}EPISODE 5`.trim();
+      }
+      break;
   }
+
+  return applyCasing(result);
 };
 
 interface GeneratorControlsProps {
@@ -47,6 +98,21 @@ interface GeneratorControlsProps {
   hasGeminiKey?: boolean;
 }
 
+const PREDEFINED_FORMATS = [
+  'season_num_ep_num',
+  's_pad_ep_num',
+  's_pad_ep_pad',
+  's_pad_e_pad',
+  'season_word_ep_word',
+  'compact_pad',
+  'ep_num',
+  'ep_word',
+  'e_pad',
+  'season_num',
+  'season_word',
+  's_pad'
+];
+
 export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
   styleConfig,
   setStyleConfig,
@@ -66,6 +132,7 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
   hasGeminiKey = true
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isCustomFormat = !PREDEFINED_FORMATS.includes(styleConfig.subheading_format);
 
   return (
     <div className="border-t border-gray-800 pt-4 flex flex-col gap-4">
@@ -109,8 +176,8 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
             <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="e.g., Gritty thriller with bold gold font (or leave default)..."
-                title="Gemini analyzes the show's name, genres, synopsis, and any custom directions you provide."
+                placeholder="e.g., Gritty thriller with bold gold font (or leave blank to auto-match)..."
+                title="Gemini automatically analyzes the show's poster, genres, and synopsis. Type here only if you want to give custom styling directions."
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAiSuggest()}
@@ -381,29 +448,160 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
             <div className="bg-dark-950/80 border border-gray-800 rounded-lg py-1.5 px-3 flex items-center justify-between text-xs">
               <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Preview</span>
               <span
-                className="font-mono font-bold tracking-wide"
-                style={{ color: styleConfig.subheading_color }}
+                className="font-bold tracking-wide"
+                style={{
+                  color: styleConfig.subheading_color,
+                  fontFamily: styleConfig.subheading_font_family || styleConfig.font_family,
+                  letterSpacing: `${styleConfig.subheading_tracking || 0}px`
+                }}
               >
-                {getSubheadingPreview(styleConfig.subheading_format, styleConfig.subheading_icon)}
+                {getSubheadingPreview(styleConfig.subheading_format, styleConfig.subheading_icon, styleConfig.subheading_casing)}
               </span>
             </div>
 
-            {/* Subheading Format Selector */}
+            {/* Position & Text Casing Controls */}
+            <div className="grid grid-cols-2 gap-2">
+              {/* Subheading Position */}
+              <div>
+                <label className="text-[11px] text-gray-400 block mb-1 font-medium">Position</label>
+                <div className="grid grid-cols-2 gap-1 bg-dark-950 p-1 rounded-lg border border-gray-800">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStyleConfig((prev) => ({
+                        ...prev,
+                        subheading_position: 'above'
+                      }))
+                    }
+                    className={`py-1 text-xs rounded font-medium transition text-center ${
+                      (styleConfig.subheading_position || 'above') === 'above'
+                        ? 'bg-brand-600 text-white shadow-sm'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Above Title
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStyleConfig((prev) => ({
+                        ...prev,
+                        subheading_position: 'below'
+                      }))
+                    }
+                    className={`py-1 text-xs rounded font-medium transition text-center ${
+                      styleConfig.subheading_position === 'below'
+                        ? 'bg-brand-600 text-white shadow-sm'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Below Title
+                  </button>
+                </div>
+              </div>
+
+              {/* Text Casing */}
+              <div>
+                <label className="text-[11px] text-gray-400 block mb-1 font-medium">Text Casing</label>
+                <div className="grid grid-cols-3 gap-1 bg-dark-950 p-1 rounded-lg border border-gray-800">
+                  {[
+                    { id: 'upper', label: 'UPPER' },
+                    { id: 'title', label: 'Title' },
+                    { id: 'lower', label: 'lower' }
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() =>
+                        setStyleConfig((prev) => ({
+                          ...prev,
+                          subheading_casing: item.id as any
+                        }))
+                      }
+                      className={`py-1 text-xs rounded font-medium transition text-center ${
+                        (styleConfig.subheading_casing || 'upper') === item.id
+                          ? 'bg-brand-600 text-white shadow-sm'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Subtitle Font Family Selector */}
             <div>
-              <label className="text-[11px] text-gray-400 block mb-1">
-                Format Style
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] text-gray-400 font-medium">Subtitle Font</label>
+                {styleConfig.subheading_font_family && styleConfig.subheading_font_family !== styleConfig.font_family && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStyleConfig((prev) => ({
+                        ...prev,
+                        subheading_font_family: undefined
+                      }))
+                    }
+                    className="text-[10px] text-brand-400 hover:underline"
+                  >
+                    Reset to Match Title
+                  </button>
+                )}
+              </div>
               <select
-                value={styleConfig.subheading_format}
+                value={styleConfig.subheading_font_family || ''}
                 onChange={(e) =>
                   setStyleConfig((prev) => ({
                     ...prev,
-                    subheading_format: e.target.value
+                    subheading_font_family: e.target.value || undefined
                   }))
                 }
                 className="w-full bg-dark-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-brand-500 font-medium"
               >
+                <option value="">Match Title Font ({styleConfig.font_family})</option>
+                <optgroup label="Installed & Google Fonts">
+                  {availableFonts.map((f) => (
+                    <option key={f.name} value={f.name}>
+                      {f.name} {f.type === 'custom' ? '(Custom)' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+
+            {/* Subheading Format Selector */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] text-gray-400 font-medium">Format Style</label>
+                {isCustomFormat && (
+                  <span className="text-[10px] text-brand-400 font-medium">Custom Template Active</span>
+                )}
+              </div>
+              <select
+                value={isCustomFormat ? 'custom' : styleConfig.subheading_format}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === 'custom') {
+                    setStyleConfig((prev) => ({
+                      ...prev,
+                      subheading_format: prev.subheading_format && prev.subheading_format.includes('{')
+                        ? prev.subheading_format
+                        : '{s_pad} • Episode {episode}'
+                    }));
+                  } else {
+                    setStyleConfig((prev) => ({
+                      ...prev,
+                      subheading_format: val
+                    }));
+                  }
+                }}
+                className="w-full bg-dark-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-brand-500 font-medium"
+              >
                 <option value="season_num_ep_num">Season 1 • Episode 1 (Standard)</option>
+                <option value="s_pad_ep_num">S01 • Episode 1</option>
+                <option value="s_pad_ep_pad">S01 • Episode 01</option>
                 <option value="s_pad_e_pad">S01 • E01 (Short Code)</option>
                 <option value="season_word_ep_word">Season One • Episode One (Words)</option>
                 <option value="compact_pad">S01E01 (Compact)</option>
@@ -411,29 +609,40 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
                 <option value="ep_word">Episode One (Episode Only - No Season)</option>
                 <option value="e_pad">E01 (Episode Code Only - No Season)</option>
                 <option value="season_num">Season 1 (Season Only)</option>
+                <option value="custom">Custom Template...</option>
               </select>
 
               {/* Quick Format Chips */}
               <div className="flex flex-wrap gap-1 mt-1.5">
                 {[
                   { id: 'season_num_ep_num', label: 'Season 1 • Ep 1' },
+                  { id: 's_pad_ep_num', label: 'S01 • Ep 1' },
                   { id: 's_pad_e_pad', label: 'S01 • E01' },
                   { id: 'ep_num', label: 'Episode 1' },
                   { id: 'e_pad', label: 'E01' },
-                  { id: 'season_word_ep_word', label: 'Words' },
-                  { id: 'compact_pad', label: 'S01E01' }
+                  { id: 'compact_pad', label: 'S01E01' },
+                  { id: 'custom', label: 'Custom' }
                 ].map((chip) => {
-                  const isSelected = styleConfig.subheading_format === chip.id;
+                  const isSelected = chip.id === 'custom' ? isCustomFormat : styleConfig.subheading_format === chip.id;
                   return (
                     <button
                       key={chip.id}
                       type="button"
-                      onClick={() =>
-                        setStyleConfig((prev) => ({
-                          ...prev,
-                          subheading_format: chip.id
-                        }))
-                      }
+                      onClick={() => {
+                        if (chip.id === 'custom') {
+                          setStyleConfig((prev) => ({
+                            ...prev,
+                            subheading_format: prev.subheading_format && prev.subheading_format.includes('{')
+                              ? prev.subheading_format
+                              : '{s_pad} • Episode {episode}'
+                          }));
+                        } else {
+                          setStyleConfig((prev) => ({
+                            ...prev,
+                            subheading_format: chip.id
+                          }));
+                        }
+                      }}
                       className={`text-[10px] px-2 py-0.5 rounded border transition font-medium ${
                         isSelected
                           ? 'bg-brand-500/20 text-brand-400 border-brand-500/40'
@@ -445,12 +654,60 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
                   );
                 })}
               </div>
+
+              {/* Custom Template Editor */}
+              {isCustomFormat && (
+                <div className="mt-2 p-2.5 bg-dark-950 border border-gray-800 rounded-lg space-y-2">
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-gray-400 font-medium">Custom Template Pattern</span>
+                    <span className="text-gray-500">Click pill to append</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={styleConfig.subheading_format}
+                    onChange={(e) =>
+                      setStyleConfig((prev) => ({
+                        ...prev,
+                        subheading_format: e.target.value
+                      }))
+                    }
+                    placeholder="e.g. Series {season} • Ep {episode}"
+                    className="w-full bg-dark-800 border border-gray-700 rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-brand-500"
+                  />
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { tag: '{s_pad}', label: 'S01' },
+                      { tag: '{episode}', label: 'Ep 1' },
+                      { tag: '{e_pad}', label: '01' },
+                      { tag: '{season}', label: 'Season 1' },
+                      { tag: '{icon}', label: 'Sep Icon' },
+                      { tag: '{season_word}', label: 'One' },
+                      { tag: '{episode_word}', label: 'Five' }
+                    ].map((pill) => (
+                      <button
+                        key={pill.tag}
+                        type="button"
+                        onClick={() =>
+                          setStyleConfig((prev) => ({
+                            ...prev,
+                            subheading_format: (prev.subheading_format ? `${prev.subheading_format} ` : '') + pill.tag
+                          }))
+                        }
+                        className="text-[10px] bg-dark-800 border border-gray-700 px-1.5 py-0.5 rounded text-gray-300 hover:text-brand-400 hover:border-brand-500/40 font-mono transition"
+                        title={`Append ${pill.tag}`}
+                      >
+                        {pill.tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Separator - only show when both season and episode are visible */}
-            {!['ep_num', 'ep_word', 'e_pad', 'season_num', 'season_word', 's_pad', 'compact_pad'].includes(styleConfig.subheading_format) && (
+            {/* Separator - only show when both season and episode are visible or custom */}
+            {(!['ep_num', 'ep_word', 'e_pad', 'season_num', 'season_word', 's_pad', 'compact_pad'].includes(styleConfig.subheading_format) || isCustomFormat) && (
               <div>
-                <label className="text-[11px] text-gray-400 block mb-1.5">
+                <label className="text-[11px] text-gray-400 block mb-1.5 font-medium">
                   Separator Character
                 </label>
                 <div className="flex items-center gap-2">
@@ -505,6 +762,43 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Letter Spacing (Tracking) */}
+            <div>
+              <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                <span>Letter Spacing (Tracking)</span>
+                <span className="font-mono text-gray-300">{styleConfig.subheading_tracking || 0}px</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="8"
+                  value={styleConfig.subheading_tracking || 0}
+                  onChange={(e) =>
+                    setStyleConfig((prev) => ({
+                      ...prev,
+                      subheading_tracking: Number(e.target.value)
+                    }))
+                  }
+                  className="w-full accent-brand-500 bg-dark-800 cursor-pointer"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="8"
+                  value={styleConfig.subheading_tracking || 0}
+                  onChange={(e) => {
+                    const val = Math.max(0, Math.min(8, Number(e.target.value) || 0));
+                    setStyleConfig((prev) => ({
+                      ...prev,
+                      subheading_tracking: val
+                    }));
+                  }}
+                  className="w-14 bg-dark-800 border border-gray-700 text-xs rounded px-2 py-1 text-white text-center font-mono"
+                />
+              </div>
+            </div>
 
             {/* Subheading Font Size */}
             <div>

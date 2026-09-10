@@ -43,6 +43,7 @@ def init_db():
         layout TEXT DEFAULT 'standard',
         text_position TEXT DEFAULT 'left_center', -- 'left_center', 'left_bottom', 'center_bottom', 'right_center', 'right_bottom'
         font_family TEXT DEFAULT 'Oswald',
+        subheading_font_family TEXT DEFAULT NULL,
         font_color TEXT DEFAULT '#FFFFFF',
         subheading_color TEXT DEFAULT '#A3A3A3',
         gradient_side TEXT DEFAULT 'left',
@@ -57,6 +58,9 @@ def init_db():
         subheading_font_size INTEGER DEFAULT 34,
         text_box_width_pct INTEGER DEFAULT 42,
         subheading_gap INTEGER DEFAULT 12,
+        subheading_casing TEXT DEFAULT 'upper',
+        subheading_position TEXT DEFAULT 'above',
+        subheading_tracking INTEGER DEFAULT 0,
         FOREIGN KEY(rating_key) REFERENCES shows(rating_key) ON DELETE CASCADE
     )
     """)
@@ -76,6 +80,14 @@ def init_db():
         cursor.execute("ALTER TABLE show_styles ADD COLUMN text_box_width_pct INTEGER DEFAULT 42")
     if "subheading_gap" not in columns:
         cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_gap INTEGER DEFAULT 12")
+    if "subheading_font_family" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_font_family TEXT DEFAULT NULL")
+    if "subheading_casing" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_casing TEXT DEFAULT 'upper'")
+    if "subheading_position" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_position TEXT DEFAULT 'above'")
+    if "subheading_tracking" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_tracking INTEGER DEFAULT 0")
     
     # Episode records and card status
     cursor.execute("""
@@ -209,14 +221,17 @@ def get_show(rating_key: str) -> Optional[Dict[str, Any]]:
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-    SELECT s.*, st.layout, st.text_position, st.font_family, st.font_color, st.subheading_color, 
+    SELECT s.*, st.layout, st.text_position, st.font_family, st.subheading_font_family, st.font_color, st.subheading_color, 
            st.gradient_side, st.gradient_width_pct, st.gradient_opacity_pct, 
            st.show_subheading, st.subheading_format, st.subheading_icon, st.ai_prompt,
            st.has_custom_style,
            COALESCE(st.title_font_size, 82) AS title_font_size,
            COALESCE(st.subheading_font_size, 34) AS subheading_font_size,
            COALESCE(st.text_box_width_pct, 42) AS text_box_width_pct,
-           COALESCE(st.subheading_gap, 12) AS subheading_gap
+           COALESCE(st.subheading_gap, 12) AS subheading_gap,
+           COALESCE(st.subheading_casing, 'upper') AS subheading_casing,
+           COALESCE(st.subheading_position, 'above') AS subheading_position,
+           COALESCE(st.subheading_tracking, 0) AS subheading_tracking
     FROM shows s
     LEFT JOIN show_styles st ON s.rating_key = st.rating_key
     WHERE s.rating_key = ?
@@ -230,7 +245,7 @@ def get_all_shows() -> List[Dict[str, Any]]:
     cursor = conn.cursor()
     cursor.execute("""
     SELECT s.*, 
-           st.layout, st.text_position, st.font_family, st.font_color, st.subheading_color, 
+           st.layout, st.text_position, st.font_family, st.subheading_font_family, st.font_color, st.subheading_color, 
            st.gradient_side, st.gradient_width_pct, st.gradient_opacity_pct, 
            st.show_subheading, st.subheading_format, st.subheading_icon, st.ai_prompt,
            COALESCE(st.has_custom_style, 0) AS has_custom_style,
@@ -238,6 +253,9 @@ def get_all_shows() -> List[Dict[str, Any]]:
            COALESCE(st.subheading_font_size, 34) AS subheading_font_size,
            COALESCE(st.text_box_width_pct, 42) AS text_box_width_pct,
            COALESCE(st.subheading_gap, 12) AS subheading_gap,
+           COALESCE(st.subheading_casing, 'upper') AS subheading_casing,
+           COALESCE(st.subheading_position, 'above') AS subheading_position,
+           COALESCE(st.subheading_tracking, 0) AS subheading_tracking,
            (SELECT COUNT(*) FROM episodes e WHERE e.show_rating_key = s.rating_key AND e.card_source = 'mediux') AS mediux_cards_count,
            (SELECT COUNT(*) FROM episodes e WHERE e.show_rating_key = s.rating_key AND e.card_source LIKE 'generator%') AS generator_cards_count
     FROM shows s
@@ -263,14 +281,16 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-    INSERT INTO show_styles (rating_key, layout, text_position, font_family, font_color, subheading_color, 
+    INSERT INTO show_styles (rating_key, layout, text_position, font_family, subheading_font_family, font_color, subheading_color, 
                              gradient_side, gradient_width_pct, gradient_opacity_pct, 
                              show_subheading, subheading_format, subheading_icon, ai_prompt, has_custom_style,
-                             title_font_size, subheading_font_size, text_box_width_pct, subheading_gap)
+                             title_font_size, subheading_font_size, text_box_width_pct, subheading_gap,
+                             subheading_casing, subheading_position, subheading_tracking)
     VALUES (:rating_key, 
             COALESCE(:layout, 'standard'), 
             COALESCE(:text_position, 'left_center'), 
             COALESCE(:font_family, 'Oswald'), 
+            :subheading_font_family,
             COALESCE(:font_color, '#FFFFFF'), 
             COALESCE(:subheading_color, '#A3A3A3'), 
             COALESCE(:gradient_side, 'left'), 
@@ -284,11 +304,15 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
             COALESCE(:title_font_size, 82),
             COALESCE(:subheading_font_size, 34),
             COALESCE(:text_box_width_pct, 42),
-            COALESCE(:subheading_gap, 12))
+            COALESCE(:subheading_gap, 12),
+            COALESCE(:subheading_casing, 'upper'),
+            COALESCE(:subheading_position, 'above'),
+            COALESCE(:subheading_tracking, 0))
     ON CONFLICT(rating_key) DO UPDATE SET
         layout = COALESCE(excluded.layout, show_styles.layout),
         text_position = COALESCE(excluded.text_position, show_styles.text_position),
         font_family = COALESCE(excluded.font_family, show_styles.font_family),
+        subheading_font_family = excluded.subheading_font_family,
         font_color = COALESCE(excluded.font_color, show_styles.font_color),
         subheading_color = COALESCE(excluded.subheading_color, show_styles.subheading_color),
         gradient_side = COALESCE(excluded.gradient_side, show_styles.gradient_side),
@@ -302,11 +326,15 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
         title_font_size = COALESCE(excluded.title_font_size, show_styles.title_font_size),
         subheading_font_size = COALESCE(excluded.subheading_font_size, show_styles.subheading_font_size),
         text_box_width_pct = COALESCE(excluded.text_box_width_pct, show_styles.text_box_width_pct),
-        subheading_gap = COALESCE(excluded.subheading_gap, show_styles.subheading_gap)
+        subheading_gap = COALESCE(excluded.subheading_gap, show_styles.subheading_gap),
+        subheading_casing = COALESCE(excluded.subheading_casing, show_styles.subheading_casing),
+        subheading_position = COALESCE(excluded.subheading_position, show_styles.subheading_position),
+        subheading_tracking = COALESCE(excluded.subheading_tracking, show_styles.subheading_tracking)
     """, {
         "layout": style_data.get("layout"),
         "text_position": style_data.get("text_position"),
         "font_family": style_data.get("font_family"),
+        "subheading_font_family": style_data.get("subheading_font_family"),
         "font_color": style_data.get("font_color"),
         "subheading_color": style_data.get("subheading_color"),
         "gradient_side": style_data.get("gradient_side"),
@@ -321,6 +349,9 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
         "subheading_font_size": style_data.get("subheading_font_size"),
         "text_box_width_pct": style_data.get("text_box_width_pct"),
         "subheading_gap": style_data.get("subheading_gap"),
+        "subheading_casing": style_data.get("subheading_casing"),
+        "subheading_position": style_data.get("subheading_position"),
+        "subheading_tracking": style_data.get("subheading_tracking"),
         "rating_key": rating_key
     })
     conn.commit()

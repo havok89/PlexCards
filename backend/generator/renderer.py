@@ -170,12 +170,17 @@ class TitleCardRenderer:
         s_pad = f"{season_num:02d}"
         e_pad = f"{episode_num:02d}"
 
-        fmt = (fmt_key or "season_num_ep_num").strip().lower()
+        raw_fmt = (fmt_key or "season_num_ep_num").strip()
+        fmt = raw_fmt.lower()
 
         if fmt in ("season_word_ep_word", "season {season_word} {icon} episode {episode_word}"):
             return f"SEASON {s_word}", f"EPISODE {e_word}", True
         elif fmt == "season_num_ep_num":
             return f"SEASON {s_num}", f"EPISODE {e_num}", True
+        elif fmt in ("s_pad_ep_num", "s00_ep_num", "s_pad_episode_num", "s01 - episode 1", "s00 - episode 0", "s_pad_ep", "s01 • episode 1"):
+            return f"S{s_pad}", f"EPISODE {e_num}", True
+        elif fmt in ("s_pad_ep_pad", "s00_ep_pad", "s_pad_episode_pad", "s00 - episode 00", "s01 • episode 01"):
+            return f"S{s_pad}", f"EPISODE {e_pad}", True
         elif fmt in ("s_pad_e_pad", "s00_e00"):
             return f"S{s_pad}", f"E{e_pad}", True
         elif fmt in ("compact_pad", "s00e00"):
@@ -193,16 +198,25 @@ class TitleCardRenderer:
         elif fmt in ("s_pad", "s00"):
             return f"S{s_pad}", "", False
         else:
-            if "{" in fmt:
+            if "{" in raw_fmt:
                 try:
-                    formatted = fmt.format(
+                    formatted = raw_fmt.format(
                         season=s_num,
+                        s=s_num,
+                        s_num=s_num,
                         season_pad=s_pad,
+                        s_pad=s_pad,
                         season_word=s_word,
+                        s_word=s_word,
                         episode=e_num,
+                        e=e_num,
+                        e_num=e_num,
                         episode_pad=e_pad,
+                        e_pad=e_pad,
                         episode_word=e_word,
-                        icon="{icon}"
+                        e_word=e_word,
+                        icon="{icon}",
+                        sep="{icon}"
                     )
                     if "{icon}" in formatted:
                         parts = formatted.split("{icon}", 1)
@@ -210,7 +224,7 @@ class TitleCardRenderer:
                     return formatted.strip(), "", False
                 except Exception:
                     pass
-            return f"SEASON {s_num}", f"EPISODE {e_num}", True
+            return raw_fmt, "", False
 
     def render(
         self,
@@ -224,6 +238,7 @@ class TitleCardRenderer:
         style = style_config or {}
         text_pos = style.get("text_position", "left_center")
         font_family = style.get("font_family", "Oswald")
+        sub_font_family = style.get("subheading_font_family") or font_family
         font_color = hex_to_rgb(style.get("font_color", "#FFFFFF"))
         sub_color = hex_to_rgb(style.get("subheading_color", "#A3A3A3"))
         
@@ -285,11 +300,18 @@ class TitleCardRenderer:
         # 2. Setup Fonts
         font_path = self.get_font_path(font_family)
         if font_path.exists():
-            sub_font = ImageFont.truetype(str(font_path), size=sub_font_size)
             title_font = ImageFont.truetype(str(font_path), size=title_font_size)
         else:
-            sub_font = ImageFont.load_default()
             title_font = ImageFont.load_default()
+
+        if sub_font_family == font_family and font_path.exists():
+            sub_font = ImageFont.truetype(str(font_path), size=sub_font_size)
+        else:
+            sub_font_path = self.get_font_path(sub_font_family)
+            if sub_font_path.exists():
+                sub_font = ImageFont.truetype(str(sub_font_path), size=sub_font_size)
+            else:
+                sub_font = ImageFont.truetype(str(font_path), size=sub_font_size) if font_path.exists() else ImageFont.load_default()
         
         # Word wrap
         lines = []
@@ -310,21 +332,73 @@ class TitleCardRenderer:
         line_height = int(title_font_size * 1.12)
         total_title_height = len(lines) * line_height
 
+        sub_position = style.get("subheading_position", "above")
+        is_sub_below = sub_position == "below"
+
         # Compute Vertical Start Y
         if is_top:
-            sub_y = 110
-            start_y = sub_y + (sub_font_size + sub_gap if show_subheading else 0)
+            if is_sub_below:
+                start_y = 110
+                sub_y = start_y + total_title_height + sub_gap
+            else:
+                sub_y = 110
+                start_y = sub_y + (sub_font_size + sub_gap if show_subheading else 0)
         elif is_bottom:
             bottom_baseline = 980
-            start_y = bottom_baseline - total_title_height
-            sub_y = start_y - sub_font_size - sub_gap
+            if is_sub_below:
+                sub_y = bottom_baseline - sub_font_size
+                start_y = sub_y - sub_gap - total_title_height
+            else:
+                start_y = bottom_baseline - total_title_height
+                sub_y = start_y - sub_font_size - sub_gap
         else: # middle / center
-            start_y = 540 - (total_title_height // 2)
-            sub_y = start_y - sub_font_size - sub_gap
+            total_block_h = total_title_height + (sub_font_size + sub_gap if show_subheading else 0)
+            block_top = 540 - (total_block_h // 2)
+            if is_sub_below:
+                start_y = block_top
+                sub_y = start_y + total_title_height + sub_gap
+            else:
+                sub_y = block_top
+                start_y = sub_y + sub_font_size + sub_gap
 
         # 4. Render Subheading
         if show_subheading:
             season_part, episode_part, has_sep = self.get_subheading_parts(season_num, episode_num, sub_fmt)
+
+            # Apply Casing (upper, title, lower)
+            sub_casing = style.get("subheading_casing", "upper")
+            if sub_casing == "title":
+                season_part = season_part.title() if season_part else ""
+                episode_part = episode_part.title() if episode_part else ""
+            elif sub_casing == "lower":
+                season_part = season_part.lower() if season_part else ""
+                episode_part = episode_part.lower() if episode_part else ""
+            elif sub_casing == "upper":
+                season_part = season_part.upper() if season_part else ""
+                episode_part = episode_part.upper() if episode_part else ""
+
+            # Tracking / Letter Spacing
+            sub_tracking = int(style.get("subheading_tracking", 0) or 0)
+
+            def get_tracked_width(text: str, font: ImageFont.ImageFont, tracking: int = 0) -> int:
+                if not text:
+                    return 0
+                if tracking <= 0 or len(text) <= 1:
+                    bbox = draw.textbbox((0, 0), text, font=font)
+                    return bbox[2] - bbox[0]
+                total = sum(font.getlength(ch) for ch in text) + (len(text) - 1) * tracking
+                return int(round(total))
+
+            def draw_tracked_text(xy: Tuple[int, int], text: str, font: ImageFont.ImageFont, fill: Any, tracking: int = 0):
+                if not text:
+                    return
+                x, y = xy
+                if tracking <= 0 or len(text) <= 1:
+                    draw.text((x, y), text, font=font, fill=fill)
+                    return
+                for ch in text:
+                    draw.text((x, y), ch, font=font, fill=fill)
+                    x += font.getlength(ch) + tracking
 
             # Resolve separator character
             raw_icon = str(sub_icon).strip() if sub_icon else ""
@@ -340,20 +414,9 @@ class TitleCardRenderer:
             draw_sep = has_sep and bool(sep_char)
 
             gap = max(10, int(sub_font_size * 0.47))
-            s_w = 0
-            if season_part:
-                s_bbox = draw.textbbox((0, 0), season_part, font=sub_font)
-                s_w = s_bbox[2] - s_bbox[0]
-
-            e_w = 0
-            if episode_part:
-                e_bbox = draw.textbbox((0, 0), episode_part, font=sub_font)
-                e_w = e_bbox[2] - e_bbox[0]
-
-            sep_w = 0
-            if draw_sep:
-                sep_bbox = draw.textbbox((0, 0), sep_char, font=sub_font)
-                sep_w = sep_bbox[2] - sep_bbox[0]
+            s_w = get_tracked_width(season_part, sub_font, sub_tracking)
+            e_w = get_tracked_width(episode_part, sub_font, sub_tracking)
+            sep_w = get_tracked_width(sep_char, sub_font, 0) if draw_sep else 0
 
             if season_part and episode_part:
                 total_sub_w = s_w + gap + (sep_w + gap if draw_sep else 0) + e_w
@@ -376,8 +439,8 @@ class TitleCardRenderer:
 
                 # Draw Season part if present
                 if season_part:
-                    draw.text((curr_x + 2, sub_y + 2), season_part, font=sub_font, fill=(0, 0, 0, 200))
-                    draw.text((curr_x, sub_y), season_part, font=sub_font, fill=sub_color)
+                    draw_tracked_text((curr_x + 2, sub_y + 2), season_part, font=sub_font, fill=(0, 0, 0, 200), tracking=sub_tracking)
+                    draw_tracked_text((curr_x, sub_y), season_part, font=sub_font, fill=sub_color, tracking=sub_tracking)
                     curr_x += s_w
 
                 # Draw separator if both parts present
@@ -390,8 +453,8 @@ class TitleCardRenderer:
 
                 # Draw Episode part if present
                 if episode_part:
-                    draw.text((curr_x + 2, sub_y + 2), episode_part, font=sub_font, fill=(0, 0, 0, 200))
-                    draw.text((curr_x, sub_y), episode_part, font=sub_font, fill=sub_color)
+                    draw_tracked_text((curr_x + 2, sub_y + 2), episode_part, font=sub_font, fill=(0, 0, 0, 200), tracking=sub_tracking)
+                    draw_tracked_text((curr_x, sub_y), episode_part, font=sub_font, fill=sub_color, tracking=sub_tracking)
 
         # 5. Render Title Lines
         for i, line in enumerate(lines):

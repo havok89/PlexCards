@@ -93,7 +93,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     {toast.title}
                   </h4>
                 )}
-                <p className="text-xs text-gray-300 leading-relaxed break-words">
+                <p className="text-xs text-gray-300 leading-relaxed break-words whitespace-pre-line">
                   {toast.message}
                 </p>
               </div>

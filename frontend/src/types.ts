@@ -17,6 +17,7 @@ export interface Show {
   layout?: string;
   text_position?: 'left_center' | 'left_bottom' | 'center_bottom' | 'right_center' | 'right_bottom' | 'top_left' | 'top_center' | 'top_right' | 'center' | 'center_right' | 'bottom_center';
   font_family?: string;
+  subheading_font_family?: string;
   font_color?: string;
   subheading_color?: string;
   gradient_side?: 'left' | 'right' | 'bottom' | 'top' | 'center';
@@ -29,6 +30,9 @@ export interface Show {
   subheading_font_size?: number;
   text_box_width_pct?: number;
   subheading_gap?: number;
+  subheading_casing?: 'upper' | 'title' | 'lower';
+  subheading_position?: 'above' | 'below';
+  subheading_tracking?: number;
   ai_prompt?: string;
   has_custom_style?: number;
 }
@@ -45,6 +49,7 @@ export interface StyleConfig {
   layout: string;
   text_position: 'left_center' | 'left_bottom' | 'center_bottom' | 'right_center' | 'right_bottom' | 'top_left' | 'top_center' | 'top_right' | 'center' | 'center_right' | 'bottom_center';
   font_family: string;
+  subheading_font_family?: string;
   font_color: string;
   subheading_color: string;
   gradient_side: 'left' | 'right' | 'bottom' | 'top' | 'center';
@@ -57,6 +62,9 @@ export interface StyleConfig {
   subheading_font_size: number;
   text_box_width_pct?: number;
   subheading_gap?: number;
+  subheading_casing?: 'upper' | 'title' | 'lower';
+  subheading_position?: 'above' | 'below';
+  subheading_tracking?: number;
   ai_prompt?: string;
 }
 

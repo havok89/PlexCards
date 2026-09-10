@@ -365,10 +365,12 @@ def get_show_details(rating_key: str):
     if auto_gemini and not show.get("has_custom_style") and tmdb_info and ai_styler.api_key:
         try:
             logger.info(f"✨ Generating initial AI style suggestion for '{show['title']}'...")
+            poster_path = POSTERS_DIR / f"{rating_key}.jpg"
             ai_style = ai_styler.suggest_style(
                 show_title=show["title"],
                 genres=tmdb_info.get("genres", []),
-                overview=tmdb_info.get("overview", "")
+                overview=tmdb_info.get("overview", ""),
+                poster_path=poster_path if poster_path.exists() else None
             )
             if ai_style.get("error"):
                 ai_error = ai_style["error"]
@@ -521,6 +523,7 @@ def generate_preview(rating_key: str, payload: dict = Body(...)):
         "t": episode_title,
         "pos": style.get("text_position"),
         "font": style.get("font_family"),
+        "s_font": style.get("subheading_font_family"),
         "c": style.get("font_color"),
         "sc": style.get("subheading_color"),
         "icon": style.get("subheading_icon"),
@@ -531,7 +534,10 @@ def generate_preview(rating_key: str, payload: dict = Body(...)):
         "tfs": style.get("title_font_size", 82),
         "sfs": style.get("subheading_font_size", 34),
         "tbw": style.get("text_box_width_pct", 42),
-        "sg": style.get("subheading_gap", 12)
+        "sg": style.get("subheading_gap", 12),
+        "s_case": style.get("subheading_casing", "upper"),
+        "s_pos": style.get("subheading_position", "above"),
+        "s_track": style.get("subheading_tracking", 0)
     }, sort_keys=True).encode()).hexdigest()
 
     cached_preview = PREVIEWS_DIR / f"{cache_key}.jpg"
@@ -615,11 +621,13 @@ def ai_suggest_style(rating_key: str, payload: dict = Body(...)):
 
     user_prompt = payload.get("prompt", "")
 
+    poster_path = POSTERS_DIR / f"{rating_key}.jpg"
     suggestion = ai_styler.suggest_style(
         show_title=show["title"],
         genres=genres,
         overview=overview,
-        user_prompt=user_prompt
+        user_prompt=user_prompt,
+        poster_path=poster_path if poster_path.exists() else None
     )
     if suggestion.get("error"):
         status_code = 503 if suggestion.get("is_unavailable") else 500

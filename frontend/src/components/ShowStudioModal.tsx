@@ -84,6 +84,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     layout: show.layout || 'standard',
     text_position: (show.text_position as any) || 'left_center',
     font_family: show.font_family || 'Oswald',
+    subheading_font_family: show.subheading_font_family || undefined,
     font_color: show.font_color || '#FFFFFF',
     subheading_color: show.subheading_color || '#A3A3A3',
     gradient_side: show.gradient_side || 'left',
@@ -95,7 +96,10 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     title_font_size: show.title_font_size || 82,
     subheading_font_size: show.subheading_font_size || 34,
     text_box_width_pct: show.text_box_width_pct || 42,
-    subheading_gap: show.subheading_gap !== undefined ? show.subheading_gap : 12
+    subheading_gap: show.subheading_gap !== undefined ? show.subheading_gap : 12,
+    subheading_casing: show.subheading_casing || 'upper',
+    subheading_position: show.subheading_position || 'above',
+    subheading_tracking: show.subheading_tracking !== undefined ? show.subheading_tracking : 0
   });
 
   // Load details, episodes, fonts, and available sets
@@ -140,6 +144,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           layout: data.show.layout || 'standard',
           text_position: (data.show.text_position as any) || 'left_center',
           font_family: data.show.font_family || 'Oswald',
+          subheading_font_family: data.show.subheading_font_family || undefined,
           font_color: data.show.font_color || '#FFFFFF',
           subheading_color: data.show.subheading_color || '#A3A3A3',
           gradient_side: data.show.gradient_side || 'left',
@@ -151,31 +156,15 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           title_font_size: data.show.title_font_size || 82,
           subheading_font_size: data.show.subheading_font_size || 34,
           text_box_width_pct: data.show.text_box_width_pct || 42,
-          subheading_gap: data.show.subheading_gap !== undefined ? data.show.subheading_gap : 12
+          subheading_gap: data.show.subheading_gap !== undefined ? data.show.subheading_gap : 12,
+          subheading_casing: data.show.subheading_casing || 'upper',
+          subheading_position: data.show.subheading_position || 'above',
+          subheading_tracking: data.show.subheading_tracking !== undefined ? data.show.subheading_tracking : 0
         });
         if (data.show.ai_prompt) {
           setAiReasoning(data.show.ai_prompt);
         }
       }
-
-      // Pre-populate AI prompt box with show name, genres, and synopsis if currently empty
-      setAiPrompt((currentPrompt) => {
-        if (currentPrompt.trim()) return currentPrompt;
-        const genresList = data.tmdb_info?.genres || [];
-        const genresStr = genresList.length > 0 ? genresList.join(', ') : '';
-        const rawOverview = (data.tmdb_info?.overview || '').trim();
-        const shortSynopsis = rawOverview.length > 130 ? rawOverview.slice(0, 127) + '...' : rawOverview;
-
-        let defaultPrompt = data.show?.title || show.title;
-        if (genresStr && shortSynopsis) {
-          defaultPrompt = `${defaultPrompt} (${genresStr}) - ${shortSynopsis}`;
-        } else if (genresStr) {
-          defaultPrompt = `${defaultPrompt} (${genresStr})`;
-        } else if (shortSynopsis) {
-          defaultPrompt = `${defaultPrompt} - ${shortSynopsis}`;
-        }
-        return defaultPrompt;
-      });
 
       if (data.initial_ai_generated) {
         onShowUpdated();
@@ -186,32 +175,6 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     };
   }, [show.rating_key]);
 
-  const handleFontUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploadingFont(true);
-    try {
-      const res = await api.uploadFont(file);
-      const updatedFonts = await api.getFonts();
-      setAvailableFonts(updatedFonts);
-      setStyleConfig((prev) => ({ ...prev, font_family: res.font_name }));
-      showToast({
-        type: 'success',
-        title: 'Font Uploaded',
-        message: `Custom font "${res.font_name}" uploaded and selected!`
-      });
-    } catch (err) {
-      showToast({
-        type: 'error',
-        title: 'Font Upload Failed',
-        message: String(err)
-      });
-    } finally {
-      setIsUploadingFont(false);
-    }
-  };
-
   // Refresh preview with client and server caching
   useEffect(() => {
     if (episodes.length === 0) return;
@@ -219,7 +182,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     if (!ep) return;
 
     // Check frontend in-memory cache first for instantaneous rendering
-    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.show_subheading}_${styleConfig.subheading_format}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}_${styleConfig.title_font_size}_${styleConfig.subheading_font_size}_${styleConfig.text_box_width_pct || 42}_${styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 12}`;
+    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.subheading_font_family || ''}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.show_subheading}_${styleConfig.subheading_format}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}_${styleConfig.title_font_size}_${styleConfig.subheading_font_size}_${styleConfig.text_box_width_pct || 42}_${styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 12}_${styleConfig.subheading_casing || 'upper'}_${styleConfig.subheading_position || 'above'}_${styleConfig.subheading_tracking || 0}`;
     if (previewBlobCache.has(cacheKey)) {
       setPreviewUrl(previewBlobCache.get(cacheKey)!);
       setIsPreviewLoading(false);
@@ -456,12 +419,13 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     setIsAiLoading(true);
     setAiReasoning('');
     try {
-      const effectivePrompt = aiPrompt.trim() || activeShow.title || show.title;
+      const effectivePrompt = aiPrompt.trim();
       const suggestion = await api.askAi(activeShow.rating_key, effectivePrompt);
       if (suggestion.font_family) {
         setStyleConfig((prev) => ({
           ...prev,
           font_family: suggestion.font_family,
+          subheading_font_family: suggestion.subheading_font_family || undefined,
           font_color: suggestion.font_color || prev.font_color,
           subheading_color: suggestion.subheading_color || prev.subheading_color,
           subheading_icon: suggestion.subheading_icon || prev.subheading_icon,
@@ -470,14 +434,39 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           gradient_width_pct: suggestion.gradient_width_pct || prev.gradient_width_pct,
           gradient_opacity_pct: suggestion.gradient_opacity_pct || prev.gradient_opacity_pct,
           title_font_size: suggestion.title_font_size || prev.title_font_size || 82,
-          subheading_font_size: suggestion.subheading_font_size || prev.subheading_font_size || 34
+          subheading_font_size: suggestion.subheading_font_size || prev.subheading_font_size || 34,
+          subheading_position: suggestion.subheading_position || prev.subheading_position,
+          subheading_casing: suggestion.subheading_casing || prev.subheading_casing,
+          subheading_tracking: suggestion.subheading_tracking !== undefined ? suggestion.subheading_tracking : prev.subheading_tracking,
+          subheading_format: suggestion.subheading_format || prev.subheading_format,
+          subheading_gap: suggestion.subheading_gap !== undefined ? suggestion.subheading_gap : prev.subheading_gap,
+          text_box_width_pct: suggestion.text_box_width_pct || prev.text_box_width_pct
         }));
       }
       setAiReasoning(suggestion.reasoning || '');
+
+      const fontSummary = suggestion.subheading_font_family && suggestion.subheading_font_family !== suggestion.font_family
+        ? `• Fonts: "${suggestion.font_family}" & "${suggestion.subheading_font_family}"`
+        : `• Font: "${suggestion.font_family}"`;
+
+      const posFormatted = (suggestion.text_position || 'left_center').replace(/_/g, ' ');
+      const subPos = suggestion.subheading_position ? ` (${suggestion.subheading_position} title)` : '';
+      const layoutSummary = `• Layout: ${posFormatted.charAt(0).toUpperCase() + posFormatted.slice(1)}${subPos}`;
+
+      const colorSummary = `• Colors: ${suggestion.font_color || '#FFFFFF'} (Title) / ${suggestion.subheading_color || '#A3A3A3'} (Sub)`;
+      const sizeSummary = `• Sizes: ${suggestion.title_font_size || 82}px Title / ${suggestion.subheading_font_size || 34}px Sub`;
+
+      const casingLabel = suggestion.subheading_casing === 'upper' ? 'UPPER' : suggestion.subheading_casing === 'title' ? 'Title Case' : 'lower';
+      const trackingLabel = suggestion.subheading_tracking ? `+${suggestion.subheading_tracking}px tracking` : 'no tracking';
+      const subDetail = `• Subtitle: ${casingLabel}, ${trackingLabel}`;
+
+      const fullSummary = [fontSummary, colorSummary, layoutSummary, sizeSummary, subDetail].join('\n');
+
       showToast({
         type: 'success',
-        title: 'Style Suggested',
-        message: `Gemini recommended "${suggestion.font_family}" typography.`
+        title: 'Gemini Style Recommendation Applied',
+        message: fullSummary,
+        duration: 6000
       });
     } catch (err: any) {
       const msg = err?.message || String(err);
@@ -489,6 +478,33 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
       setAiReasoning(`❌ ${msg}`);
     } finally {
       setIsAiLoading(false);
+    }
+  };
+
+  const handleFontUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingFont(true);
+    try {
+      const res = await api.uploadFont(file);
+      const updatedFonts = await api.getFonts();
+      setAvailableFonts(updatedFonts);
+      setStyleConfig((prev) => ({ ...prev, font_family: res.font_name }));
+      showToast({
+        type: 'success',
+        title: 'Font Uploaded',
+        message: `Custom font "${res.font_name}" uploaded and selected!`
+      });
+    } catch (err) {
+      showToast({
+        type: 'error',
+        title: 'Font Upload Failed',
+        message: String(err)
+      });
+    } finally {
+      setIsUploadingFont(false);
+      if (e.target) e.target.value = '';
     }
   };
 

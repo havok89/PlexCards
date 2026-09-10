@@ -35,21 +35,40 @@ export const ShowCard: React.FC<ShowCardProps> = ({ show, onClick }) => {
         {/* Mode Pill Badge */}
         <div className="absolute top-2 left-2">
           {show.mode === 'auto' && (
-            <span className="bg-emerald-950/80 backdrop-blur-md text-emerald-400 border border-emerald-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
+            <span className="bg-emerald-950/80 backdrop-blur-md text-emerald-400 border border-emerald-500/40 text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
               <Zap className="w-2.5 h-2.5" /> Auto
             </span>
           )}
           {show.mode === 'generator_only' && (
-            <span className="bg-purple-950/80 backdrop-blur-md text-purple-300 border border-purple-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
+            <span className="bg-purple-950/80 backdrop-blur-md text-purple-300 border border-purple-500/40 text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
               <Wand2 className="w-2.5 h-2.5" /> Preset
             </span>
           )}
           {show.mode === 'ignored' && (
-            <span className="bg-gray-900/80 backdrop-blur-md text-gray-400 border border-gray-700 text-[10px] font-bold px-2 py-0.5 rounded-full shadow flex items-center gap-1">
+            <span className="bg-gray-900/80 backdrop-blur-md text-gray-400 border border-gray-700 text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shadow flex items-center gap-1">
               <Ban className="w-2.5 h-2.5" /> Ignored
             </span>
           )}
         </div>
+
+        {/* Status Badge (Continuing / Ended) */}
+        {show.status && (
+          <div className="absolute top-2 right-2">
+            {show.status.toLowerCase() !== 'ended' &&
+            show.status.toLowerCase() !== 'canceled' &&
+            show.status.toLowerCase() !== 'cancelled' ? (
+              <span className="bg-cyan-950/80 backdrop-blur-md text-cyan-300 border border-cyan-500/40 text-[9px] sm:text-[10px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                Continuing
+              </span>
+            ) : (
+              <span className="bg-black/70 backdrop-blur-md text-gray-400 border border-gray-700/60 text-[9px] sm:text-[10px] font-medium px-1.5 sm:px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-500" />
+                Ended
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Season & Episode Badge */}
         <div className="absolute bottom-2 right-2 bg-black/70 backdrop-blur-md text-gray-200 text-[11px] font-medium px-2 py-0.5 rounded">
