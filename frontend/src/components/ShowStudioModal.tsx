@@ -592,87 +592,100 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   const activeDisplayUrl = isShowingMediux ? currentEpMediuxCardUrl : previewUrl;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-dark-900 border border-gray-800 rounded-2xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm">
+      <div className="bg-dark-900 border border-gray-800 rounded-xl sm:rounded-2xl w-full max-w-6xl h-[96vh] sm:h-[92vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-dark-850">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-brand-500/20 text-brand-500 flex items-center justify-center font-bold">
-              <Sliders className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                {activeShow.title}
-              </h2>
-              <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5 flex-wrap">
-                {activeShow.year && <span>{activeShow.year}</span>}
-                {activeShow.year && <span>•</span>}
-                {activeShow.tmdb_id ? (
-                  <div className="flex items-center gap-1.5 bg-dark-800 border border-gray-700/80 px-2 py-0.5 rounded text-[11px]">
-                    <a
-                      href={`https://www.themoviedb.org/tv/${activeShow.tmdb_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-gray-300 hover:text-brand-400 flex items-center gap-1 transition"
-                      title="View show on TMDb"
-                    >
-                      <span>TMDb: {activeShow.tmdb_id}</span>
-                      <ExternalLink className="w-2.5 h-2.5 text-gray-500" />
-                    </a>
+        <div className="px-3 sm:px-6 py-2.5 sm:py-4 border-b border-gray-800 bg-dark-850 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3 shrink-0">
+          <div className="flex items-start md:items-center justify-between gap-3 min-w-0">
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-brand-500/20 text-brand-500 flex items-center justify-center font-bold shrink-0">
+                <Sliders className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-base sm:text-lg font-bold text-white truncate">
+                  {activeShow.title}
+                </h2>
+                <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-gray-400 mt-0.5 flex-wrap">
+                  {activeShow.year && <span>{activeShow.year}</span>}
+                  {activeShow.year && <span>•</span>}
+                  {activeShow.tmdb_id ? (
+                    <div className="flex items-center gap-1 bg-dark-800 border border-gray-700/80 px-1.5 py-0.5 rounded text-[10px] sm:text-[11px]">
+                      <a
+                        href={`https://www.themoviedb.org/tv/${activeShow.tmdb_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-gray-300 hover:text-brand-400 flex items-center gap-1 transition"
+                        title="View show on TMDb"
+                      >
+                        <span>TMDb: {activeShow.tmdb_id}</span>
+                        <ExternalLink className="w-2.5 h-2.5 text-gray-500" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={handleOpenTmdbModal}
+                        className="text-gray-400 hover:text-white transition p-0.5 hover:bg-dark-700 rounded ml-0.5"
+                        title="Edit or Change TMDb Match"
+                      >
+                        <Edit2 className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  ) : (
                     <button
                       type="button"
                       onClick={handleOpenTmdbModal}
-                      className="text-gray-400 hover:text-white transition p-0.5 hover:bg-dark-700 rounded ml-0.5"
-                      title="Edit or Change TMDb Match"
+                      className="inline-flex items-center gap-1 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-semibold transition"
+                      title="Find and link this show to TMDb"
                     >
-                      <Edit2 className="w-2.5 h-2.5" />
+                      <AlertTriangle className="w-3 h-3" />
+                      Link TMDb
                     </button>
-                  </div>
-                ) : (
+                  )}
+
+                  <span className="text-gray-600 hidden xs:inline">•</span>
                   <button
                     type="button"
-                    onClick={handleOpenTmdbModal}
-                    className="inline-flex items-center gap-1 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded text-[11px] font-semibold transition"
-                    title="Find and link this show to TMDb"
+                    onClick={() => setIsPlexFixMatchConfirmOpen(true)}
+                    className="text-gray-400 hover:text-blue-400 transition text-[10px] sm:text-[11px] flex items-center gap-1 bg-dark-800 hover:bg-dark-700 border border-gray-700/80 px-1.5 py-0.5 rounded"
+                    title="Prompt Plex to fix match this show with the Plex Series Agent"
                   >
-                    <AlertTriangle className="w-3 h-3" />
-                    Link TMDb
+                    <RefreshCw className="w-2.5 h-2.5" />
+                    <span className="hidden sm:inline">Fix Match in Plex</span>
+                    <span className="sm:hidden">Fix Match</span>
                   </button>
-                )}
-
-                <span className="text-gray-600">•</span>
-                <button
-                  type="button"
-                  onClick={() => setIsPlexFixMatchConfirmOpen(true)}
-                  className="text-gray-400 hover:text-blue-400 transition text-[11px] flex items-center gap-1 bg-dark-800 hover:bg-dark-700 border border-gray-700/80 px-2 py-0.5 rounded"
-                  title="Prompt Plex to fix match this show with the Plex Series Agent"
-                >
-                  <RefreshCw className="w-2.5 h-2.5" />
-                  Fix Match in Plex
-                </button>
+                </div>
               </div>
             </div>
+
+            {/* Mobile Close X Button */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="md:hidden text-gray-400 hover:text-white p-1 rounded-lg transition shrink-0"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
-          <div className="flex items-center flex-wrap gap-2.5">
+          {/* Header Action Controls */}
+          <div className="flex items-center flex-wrap md:flex-nowrap gap-2 justify-between md:justify-end">
             {/* Scope Toggle: All vs Missing */}
-            <div className="flex items-center bg-dark-800 border border-gray-700 rounded-lg p-0.5 text-xs">
+            <div className="flex items-center bg-dark-800 border border-gray-700 rounded-lg p-0.5 text-xs shrink-0">
               <button
                 type="button"
                 onClick={() => setUpdateScope('all')}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
+                className={`px-2 sm:px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-medium transition ${
                   updateScope === 'all'
                     ? 'bg-brand-500 text-dark-950 font-bold shadow-sm'
                     : 'text-gray-400 hover:text-gray-200'
                 }`}
                 title="Update and overwrite cards for all episodes"
               >
-                All Episodes
+                All
               </button>
               <button
                 type="button"
                 onClick={() => setUpdateScope('missing')}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
+                className={`px-2 sm:px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-medium transition ${
                   updateScope === 'missing'
                     ? 'bg-brand-500 text-dark-950 font-bold shadow-sm'
                     : 'text-gray-400 hover:text-gray-200'
@@ -685,19 +698,19 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
 
             {/* If TEST_MODE is active, allow user to toggle Force Live */}
             {testMode && (
-              <label className="flex items-center gap-1.5 text-xs text-amber-400 cursor-pointer bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-lg hover:bg-amber-500/15 transition select-none">
+              <label className="flex items-center gap-1 text-[11px] sm:text-xs text-amber-400 cursor-pointer bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded-lg hover:bg-amber-500/15 transition select-none shrink-0">
                 <input
                   type="checkbox"
                   checked={isForceLive}
                   onChange={(e) => setIsForceLive(e.target.checked)}
                   className="rounded text-amber-500 focus:ring-0 cursor-pointer"
                 />
-                <span className="font-semibold text-[11px]">Push Live to Plex</span>
+                <span className="font-semibold text-[10px] sm:text-[11px]">Live to Plex</span>
               </label>
             )}
 
             {/* Apply / Update Button with Dynamic Progress */}
-            <div className="flex flex-col gap-1 min-w-[190px]">
+            <div className="flex-1 md:flex-none flex flex-col gap-1 min-w-[120px] sm:min-w-[170px]">
               <button
                 type="button"
                 onClick={handleApply}
@@ -706,21 +719,19 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
                   testMode && !isForceLive
                     ? 'bg-amber-500 hover:bg-amber-600 text-dark-950'
                     : 'bg-brand-500 hover:bg-brand-600 text-dark-950'
-                } disabled:opacity-50 font-bold px-4 py-2 rounded-lg text-xs flex items-center justify-center gap-2 transition shadow-md w-full`}
+                } disabled:opacity-50 font-bold px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 transition shadow-md w-full`}
               >
                 {isApplying ? (
-                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
                 ) : testMode && !isForceLive ? (
-                  <FlaskConical className="w-4 h-4 shrink-0" />
+                  <FlaskConical className="w-3.5 h-3.5 shrink-0" />
                 ) : (
-                  <CheckCircle className="w-4 h-4 shrink-0" />
+                  <CheckCircle className="w-3.5 h-3.5 shrink-0" />
                 )}
                 <span className="truncate">
                   {isApplying
                     ? applyProgress && applyProgress.total > 0
-                      ? `${testMode && !isForceLive ? 'Simulating' : 'Updating'} ${applyProgress.current} of ${applyProgress.total}${applyProgress.label ? ` (${applyProgress.label})` : ''}`
-                      : testMode && !isForceLive
-                      ? 'Simulating...'
+                      ? `${testMode && !isForceLive ? 'Sim' : 'Updating'} ${applyProgress.current}/${applyProgress.total}`
                       : 'Updating...'
                     : testMode && !isForceLive
                     ? `Simulate (${updateScope === 'all' ? 'All' : 'Missing'})`
@@ -741,10 +752,11 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
               )}
             </div>
 
+            {/* Desktop close button */}
             <button
               type="button"
               onClick={onClose}
-              className="text-gray-400 hover:text-white p-2 rounded-lg transition"
+              className="hidden md:block text-gray-400 hover:text-white p-2 rounded-lg transition shrink-0"
             >
               <X className="w-5 h-5" />
             </button>
@@ -752,9 +764,9 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-gray-800">
+        <div className="flex-1 overflow-y-auto lg:overflow-hidden grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-gray-800">
           {/* Left: Preview Canvas (7 cols) */}
-          <div className="lg:col-span-7 p-6 flex flex-col gap-4 bg-dark-950/40">
+          <div className="lg:col-span-7 p-3 sm:p-5 lg:p-6 flex flex-col gap-3 sm:gap-4 bg-dark-950/40 lg:overflow-y-auto">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2.5">
                 <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
@@ -803,7 +815,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
                   <select
                     value={selectedEpIndex}
                     onChange={(e) => setSelectedEpIndex(Number(e.target.value))}
-                    className="bg-dark-800 border border-gray-700 text-xs rounded-lg px-2.5 py-1.5 text-gray-300 focus:outline-none focus:border-brand-500 max-w-xs truncate"
+                    className="bg-dark-800 border border-gray-700 text-xs rounded-lg px-2.5 py-1.5 text-gray-300 focus:outline-none focus:border-brand-500 max-w-[180px] sm:max-w-xs truncate"
                   >
                     {episodes.map((ep, idx) => (
                       <option key={ep.rating_key} value={idx}>
@@ -816,75 +828,77 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
               </div>
             </div>
 
-            {/* Preview Frame */}
-            <div className="relative aspect-video bg-dark-900 border border-gray-800 rounded-xl overflow-hidden shadow-2xl flex items-center justify-center">
-              {activeDisplayUrl ? (
-                <img
-                  src={activeDisplayUrl}
-                  alt="Title Card Preview"
-                  className="w-full h-full object-cover"
-                />
-              ) : isEpisodesLoading && !activeShow.has_custom_style ? (
-                <div className="flex flex-col items-center justify-center text-center p-6 gap-3 max-w-sm">
-                  <div className="relative">
-                    <Loader2 className="w-9 h-9 animate-spin text-purple-400" />
-                    <Sparkles className="w-4 h-4 text-brand-400 absolute -top-1 -right-1 animate-pulse" />
+            {/* Preview Frame: Constrained on mobile/tablet, full on desktop */}
+            <div className="w-full flex justify-center">
+              <div className="relative aspect-video w-full max-w-[340px] sm:max-w-[460px] lg:max-w-none bg-dark-900 border border-gray-800 rounded-xl overflow-hidden shadow-2xl flex items-center justify-center">
+                {activeDisplayUrl ? (
+                  <img
+                    src={activeDisplayUrl}
+                    alt="Title Card Preview"
+                    className="w-full h-full object-cover"
+                  />
+                ) : isEpisodesLoading && !activeShow.has_custom_style ? (
+                  <div className="flex flex-col items-center justify-center text-center p-6 gap-3 max-w-sm">
+                    <div className="relative">
+                      <Loader2 className="w-9 h-9 animate-spin text-purple-400" />
+                      <Sparkles className="w-4 h-4 text-brand-400 absolute -top-1 -right-1 animate-pulse" />
+                    </div>
+                    <div>
+                      <span className="font-semibold text-white text-sm block mb-1">
+                        Styling with Gemini AI & Fetching Stills...
+                      </span>
+                      <span className="text-gray-400 text-xs leading-relaxed block">
+                        Analyzing {activeShow.title}'s genres & tone while TMDb downloads 1080p backdrop stills.
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-semibold text-white text-sm block mb-1">
-                      Styling with Gemini AI & Fetching Stills...
-                    </span>
-                    <span className="text-gray-400 text-xs leading-relaxed block">
-                      Analyzing {activeShow.title}'s genres & tone while TMDb downloads 1080p backdrop stills.
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-gray-400 text-xs gap-3">
+                    <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
+                    <span>Loading episode still & rendering preview...</span>
+                  </div>
+                )}
+
+                {/* Source Badge Overlay */}
+                {activeDisplayUrl && isShowingMediux && (
+                  <div className="absolute top-2 sm:top-3 left-2 sm:left-3 bg-dark-950/85 backdrop-blur-md px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-emerald-500/50 text-emerald-300 text-[10px] sm:text-[11px] font-medium flex items-center gap-1 sm:gap-1.5 shadow">
+                    <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400" />
+                    <span>
+                      MediUX Card • {activeMediuxSet?.creator}
                     </span>
                   </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center text-gray-400 text-xs gap-3">
-                  <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
-                  <span>Loading episode still & rendering preview...</span>
-                </div>
-              )}
+                )}
 
-              {/* Source Badge Overlay */}
-              {activeDisplayUrl && isShowingMediux && (
-                <div className="absolute top-3 left-3 bg-dark-950/85 backdrop-blur-md px-2.5 py-1 rounded-full border border-emerald-500/50 text-emerald-300 text-[11px] font-medium flex items-center gap-1.5 shadow">
-                  <Zap className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>
-                    MediUX Card • Set by {activeMediuxSet?.creator}
-                  </span>
-                </div>
-              )}
+                {activeDisplayUrl && !isShowingMediux && currentEpMediuxCardUrl && activeShow.mode === 'auto' && (
+                  <div className="absolute top-2 sm:top-3 left-2 sm:left-3 bg-dark-950/85 backdrop-blur-md px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-purple-500/50 text-purple-300 text-[10px] sm:text-[11px] font-medium flex items-center gap-1 sm:gap-1.5 shadow">
+                    <Wand2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-purple-400" />
+                    <span>Generator Preview (Fallback)</span>
+                  </div>
+                )}
 
-              {activeDisplayUrl && !isShowingMediux && currentEpMediuxCardUrl && activeShow.mode === 'auto' && (
-                <div className="absolute top-3 left-3 bg-dark-950/85 backdrop-blur-md px-2.5 py-1 rounded-full border border-purple-500/50 text-purple-300 text-[11px] font-medium flex items-center gap-1.5 shadow">
-                  <Wand2 className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Generator Preview (Fallback Preset)</span>
-                </div>
-              )}
+                {activeDisplayUrl && activeShow.mode === 'auto' && !currentEpMediuxCardUrl && (
+                  <div className="absolute top-2 sm:top-3 left-2 sm:left-3 bg-dark-950/85 backdrop-blur-md px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-amber-500/50 text-amber-300 text-[10px] sm:text-[11px] font-medium flex items-center gap-1 sm:gap-1.5 shadow">
+                    <FlaskConical className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
+                    <span>Generator Interim Fallback</span>
+                  </div>
+                )}
 
-              {activeDisplayUrl && activeShow.mode === 'auto' && !currentEpMediuxCardUrl && (
-                <div className="absolute top-3 left-3 bg-dark-950/85 backdrop-blur-md px-2.5 py-1 rounded-full border border-amber-500/50 text-amber-300 text-[11px] font-medium flex items-center gap-1.5 shadow">
-                  <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Generator Interim Fallback (No MediUX card)</span>
-                </div>
-              )}
-
-              {/* Subdued overlay indicator when rendering new style changes */}
-              {isPreviewLoading && previewUrl && !isShowingMediux && (
-                <div className="absolute top-3 right-3 bg-dark-950/80 backdrop-blur-md px-2.5 py-1 rounded-full border border-gray-700 text-gray-300 text-[11px] flex items-center gap-1.5 shadow">
-                  <Loader2 className="w-3 h-3 animate-spin text-brand-500" />
-                  <span>Updating...</span>
-                </div>
-              )}
+                {/* Subdued overlay indicator when rendering new style changes */}
+                {isPreviewLoading && previewUrl && !isShowingMediux && (
+                  <div className="absolute top-2 sm:top-3 right-2 sm:right-3 bg-dark-950/80 backdrop-blur-md px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-gray-700 text-gray-300 text-[10px] sm:text-[11px] flex items-center gap-1 sm:gap-1.5 shadow">
+                    <Loader2 className="w-3 h-3 animate-spin text-brand-500" />
+                    <span>Updating...</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {currentEp && (
-              <div className="bg-dark-900 border border-gray-800 rounded-xl p-3 text-xs text-gray-400 flex items-center justify-between">
-                <span>
+              <div className="bg-dark-900 border border-gray-800 rounded-xl p-2.5 sm:p-3 text-[11px] sm:text-xs text-gray-400 flex items-center justify-between">
+                <span className="truncate mr-2">
                   Episode: <strong className="text-white">{currentEp.title}</strong>
                 </span>
-                <span>
+                <span className="shrink-0">
                   Season <strong className="text-white">{currentEp.season_number}</strong> • Episode{' '}
                   <strong className="text-white">{currentEp.episode_number}</strong>
                 </span>
@@ -893,7 +907,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           </div>
 
           {/* Right: Controls & Studio (5 cols) */}
-          <div className="lg:col-span-5 p-6 flex flex-col gap-6 bg-dark-900 overflow-y-auto">
+          <div className="lg:col-span-5 p-4 sm:p-6 flex flex-col gap-5 sm:gap-6 bg-dark-900 lg:overflow-y-auto">
             {/* Mode Switcher */}
             <div>
               <label className="text-xs font-semibold uppercase tracking-wider text-gray-400 block mb-2">

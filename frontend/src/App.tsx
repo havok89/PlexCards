@@ -92,7 +92,7 @@ export const App: React.FC = () => {
         tvLibrary={config.tv_library}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6">
         {loading ? (
           <div className="text-center py-24 text-gray-500 flex flex-col items-center gap-3">
             <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
@@ -117,7 +117,7 @@ export const App: React.FC = () => {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-5">
             {filteredShows.map((show) => (
               <ShowCard
                 key={show.rating_key}
