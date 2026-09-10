@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="brand-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5b82e" />
+      <stop offset="100%" stop-color="#d4940c" />
+    </linearGradient>
+  </defs>
+  <!-- Background Badge -->
+  <rect width="64" height="64" rx="16" fill="url(#brand-grad)" />
+  
+  <!-- Film Icon matching App Logo -->
+  <g transform="translate(12, 12) scale(1.666)" stroke="#0b0c0e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="20" height="20" x="2" y="2" rx="2.5" />
+    <line x1="7" x2="7" y1="2" y2="22" />
+    <line x1="17" x2="17" y1="2" y2="22" />
+    <line x1="2" x2="22" y1="12" y2="12" />
+    <line x1="2" x2="7" y1="7" y2="7" />
+    <line x1="2" x2="7" y1="17" y2="17" />
+    <line x1="17" x2="22" y1="7" y2="7" />
+    <line x1="17" x2="22" y1="17" y2="17" />
+  </g>
+</svg>

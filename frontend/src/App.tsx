@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Show, AppConfig } from './types';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Show, AppConfig, AuthStatus, AuthUser } from './types';
 import { api } from './api';
 import { Navbar } from './components/Navbar';
 import { FilterBar } from './components/FilterBar';
 import { ShowCard } from './components/ShowCard';
 import { ShowStudioModal } from './components/ShowStudioModal';
 import { SettingsModal } from './components/SettingsModal';
+import { LoginPage } from './components/LoginPage';
 import { useToast } from './context/ToastContext';
 import { Tv, Loader2 } from 'lucide-react';
 
@@ -17,13 +18,15 @@ export const App: React.FC = () => {
     poll_interval_hours: 12
   });
   const [loading, setLoading] = useState<boolean>(true);
+  const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterMode, setFilterMode] = useState<string>('all');
   const [selectedShow, setSelectedShow] = useState<Show | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [conf, showsList] = await Promise.all([
         api.getConfig(),
@@ -36,11 +39,42 @@ export const App: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const checkAuthAndInit = useCallback(async () => {
+    try {
+      const status = await api.getAuthStatus();
+      setAuthStatus(status);
+      if (!status.auth_enabled || status.authenticated) {
+        await loadData();
+      }
+    } catch (e) {
+      console.error('Auth check failed:', e);
+      // Fallback: try loading data
+      await loadData();
+    } finally {
+      setCheckingAuth(false);
+    }
+  }, [loadData]);
 
   useEffect(() => {
+    checkAuthAndInit();
+  }, [checkAuthAndInit]);
+
+  const handleLoginSuccess = (user: AuthUser) => {
+    setAuthStatus({ auth_enabled: true, authenticated: true, user });
     loadData();
-  }, []);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+    } catch (e) {
+      console.error('Logout error:', e);
+    }
+    setAuthStatus({ auth_enabled: true, authenticated: false, user: null });
+    setShows([]);
+  };
 
   const { showToast } = useToast();
 
@@ -73,6 +107,19 @@ export const App: React.FC = () => {
     });
   }, [shows, searchQuery, filterMode]);
 
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-dark-950 flex flex-col items-center justify-center text-gray-400 gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
+        <p className="text-sm">Loading PlexPosters...</p>
+      </div>
+    );
+  }
+
+  if (authStatus?.auth_enabled && !authStatus?.authenticated) {
+    return <LoginPage onSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-dark-950 text-gray-200">
       <Navbar
@@ -82,6 +129,8 @@ export const App: React.FC = () => {
         isScanning={isScanning}
         onOpenSettings={() => setIsSettingsOpen(true)}
         listenerConnected={config.listener_connected}
+        currentUser={authStatus?.user}
+        onLogout={authStatus?.auth_enabled ? handleLogout : undefined}
       />
 
       <FilterBar

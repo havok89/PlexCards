@@ -67,4 +67,31 @@ export interface AppConfig {
   tv_library: string;
   poll_interval_hours: number;
   listener_connected?: boolean;
+  auth_enabled?: boolean;
 }
+
+export interface AuthUser {
+  username: string;
+  email?: string;
+  thumb?: string;
+}
+
+export interface AuthStatus {
+  auth_enabled: boolean;
+  authenticated: boolean;
+  user: AuthUser | null;
+}
+
+export interface PinResponse {
+  pin_id: number;
+  code: string;
+  auth_url: string;
+}
+
+export interface PollResponse {
+  status: 'pending' | 'authenticated' | 'denied';
+  token?: string;
+  user?: AuthUser;
+  detail?: string;
+}
+

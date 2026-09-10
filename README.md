@@ -62,6 +62,30 @@ PlexPosters includes a multi-stage Dockerfile that bundles the React frontend an
 
 ---
 
+### 🔒 Authentication (Plex OAuth)
+
+To protect your PlexPosters dashboard when exposing it on your local network or reverse proxy, you can enable Plex OAuth authentication:
+
+In your `.env`:
+```bash
+# Enable Plex sign-in
+ENABLE_AUTH=true
+
+# Optional: Restrict access to specific Plex usernames or emails (leave empty for Server Owner only)
+ALLOWED_USERS=your_plex_username,another_user@example.com
+
+# Optional: Fixed secret key for session cookies (persisted in SQLite if left empty)
+SECRET_KEY=
+```
+
+When `ENABLE_AUTH=true`:
+* All unauthenticated visits present a **Sign in with Plex** OAuth dialog.
+* Server ownership is automatically verified: by default, only the **Plex Media Server owner** is granted access (or users in `ALLOWED_USERS`).
+* Secure signed HMAC-SHA256 session cookies keep you logged in across browser sessions.
+* All backend `/api/*` endpoints are protected against unauthorized access.
+
+---
+
 ### 3. Running Locally (Python + React)
 ```bash
 # Activate virtual environment

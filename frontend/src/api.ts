@@ -1,4 +1,4 @@
-import { Show, Episode, StyleConfig, MediuxSet, AppConfig } from './types';
+import { Show, Episode, StyleConfig, MediuxSet, AppConfig, AuthStatus, PinResponse, PollResponse } from './types';
 
 export const api = {
   async getConfig(): Promise<AppConfig> {
@@ -228,6 +228,34 @@ export const api = {
       const err = await res.json().catch(() => ({ detail: 'Failed to fix match in Plex' }));
       throw new Error(err.detail || 'Failed to fix match in Plex');
     }
+    return res.json();
+  },
+
+  async getAuthStatus(): Promise<AuthStatus> {
+    const res = await fetch('/api/auth/status');
+    return res.json();
+  },
+
+  async createAuthPin(): Promise<PinResponse> {
+    const res = await fetch('/api/auth/pin', { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to create Plex PIN' }));
+      throw new Error(err.detail || 'Failed to create Plex PIN');
+    }
+    return res.json();
+  },
+
+  async pollAuthPin(pinId: number): Promise<PollResponse> {
+    const res = await fetch(`/api/auth/poll?pin_id=${pinId}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to check Plex auth status' }));
+      throw new Error(err.detail || 'Failed to check Plex auth status');
+    }
+    return res.json();
+  },
+
+  async logout(): Promise<{ status: string }> {
+    const res = await fetch('/api/auth/logout', { method: 'POST' });
     return res.json();
   }
 };

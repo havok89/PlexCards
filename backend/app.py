@@ -3,10 +3,11 @@ import base64
 import io
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Body, UploadFile, File
+from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from backend import config
 from backend.config import BASE_DIR, HOST, PORT, CUSTOM_FONTS_DIR
 from backend.db import (
     init_db, get_all_shows, get_show, update_show_mode, update_show_style,
@@ -20,6 +21,10 @@ from backend.mediux_client import MediuxClient
 from backend.generator.renderer import TitleCardRenderer
 from backend.scheduler import start_scheduler
 from backend.plex_listener import plex_listener
+from backend.auth import (
+    PlexOAuth, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS,
+    create_session_token, verify_session_token
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -33,6 +38,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Intercept requests to protect /api/ routes when ENABLE_AUTH is active."""
+    path = request.url.path
+    if config.ENABLE_AUTH and path.startswith("/api/") and not path.startswith("/api/auth") and path != "/api/config":
+        token = request.cookies.get(SESSION_COOKIE_NAME)
+        if not token:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ", 1)[1]
+
+        user = verify_session_token(token) if token else None
+        if not user:
+            return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+        request.state.user = user
+
+    return await call_next(request)
 
 # Initialize subsystems
 init_db()
@@ -59,14 +82,117 @@ def on_shutdown():
 
 @app.get("/api/config")
 def get_config_info():
-    """Return app settings including TEST_MODE and listener status."""
+    """Return app settings including TEST_MODE, listener status, and auth flag."""
     from backend.config import TEST_MODE, PLEX_TV_LIBRARY, POLL_INTERVAL_HOURS
     return {
         "test_mode": TEST_MODE,
         "tv_library": PLEX_TV_LIBRARY,
         "poll_interval_hours": POLL_INTERVAL_HOURS,
-        "listener_connected": plex_listener.is_connected
+        "listener_connected": plex_listener.is_connected,
+        "auth_enabled": config.ENABLE_AUTH
     }
+
+# ----------------------------------------------------
+# AUTH ENDPOINTS
+# ----------------------------------------------------
+
+@app.get("/api/auth/status")
+def get_auth_status(request: Request):
+    """Return whether authentication is enabled and current user info if logged in."""
+    if not config.ENABLE_AUTH:
+        return {
+            "auth_enabled": False,
+            "authenticated": True,
+            "user": {"username": "admin", "thumb": None}
+        }
+    
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
+            
+    user = verify_session_token(token) if token else None
+    if user:
+        return {
+            "auth_enabled": True,
+            "authenticated": True,
+            "user": {
+                "username": user.get("username"),
+                "email": user.get("email"),
+                "thumb": user.get("thumb")
+            }
+        }
+    return {
+        "auth_enabled": True,
+        "authenticated": False,
+        "user": None
+    }
+
+@app.post("/api/auth/pin")
+def create_auth_pin():
+    """Generate a Plex OAuth PIN and authorization URL."""
+    if not config.ENABLE_AUTH:
+        return {"error": "Authentication is disabled"}
+    try:
+        return PlexOAuth.create_pin()
+    except Exception as e:
+        logger.error(f"Failed to create Plex OAuth PIN: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create Plex PIN: {e}")
+
+@app.get("/api/auth/poll")
+def poll_auth_pin(pin_id: int, response: Response):
+    """Poll Plex PIN status, verify user credentials, and issue session cookie if approved."""
+    if not config.ENABLE_AUTH:
+        return {"status": "authenticated"}
+        
+    try:
+        auth_token = PlexOAuth.poll_pin(pin_id)
+        if not auth_token:
+            return {"status": "pending"}
+            
+        machine_id = None
+        try:
+            machine_id = sync_mgr.plex.server.machineIdentifier
+        except Exception as e:
+            logger.debug(f"Could not get server machine identifier: {e}")
+            
+        allowed, plex_user, msg = PlexOAuth.verify_access(auth_token, server_machine_id=machine_id)
+        if not allowed:
+            logger.warning(f"Access denied during Plex auth: {msg}")
+            return {"status": "denied", "detail": msg}
+            
+        user_data = {
+            "username": (plex_user or {}).get("username", "Unknown"),
+            "email": (plex_user or {}).get("email"),
+            "thumb": (plex_user or {}).get("thumb"),
+            "id": (plex_user or {}).get("id")
+        }
+        token = create_session_token(user_data)
+        
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=token,
+            max_age=SESSION_DURATION_DAYS * 86400,
+            httponly=True,
+            samesite="lax",
+            secure=False
+        )
+        
+        return {
+            "status": "authenticated",
+            "token": token,
+            "user": user_data
+        }
+    except Exception as e:
+        logger.error(f"Error polling Plex PIN: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/auth/logout")
+def logout(response: Response):
+    """Clear the session cookie."""
+    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+    return {"status": "logged_out"}
 
 @app.get("/api/listener/status")
 def get_listener_status():

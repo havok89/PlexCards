@@ -1,5 +1,6 @@
 import React from 'react';
-import { Film, Search, RefreshCw, Settings } from 'lucide-react';
+import { Film, Search, RefreshCw, Settings, LogOut } from 'lucide-react';
+import { AuthUser } from '../types';
 
 interface NavbarProps {
   searchQuery: string;
@@ -8,6 +9,8 @@ interface NavbarProps {
   isScanning: boolean;
   onOpenSettings: () => void;
   listenerConnected?: boolean;
+  currentUser?: AuthUser | null;
+  onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -16,24 +19,26 @@ export const Navbar: React.FC<NavbarProps> = ({
   onScan,
   isScanning,
   onOpenSettings,
-  listenerConnected = false
+  listenerConnected = false,
+  currentUser,
+  onLogout
 }) => {
   return (
     <header className="bg-dark-900 border-b border-gray-800 sticky top-0 z-40 px-3 sm:px-6 py-2.5 sm:py-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
         {/* Logo & Brand Title */}
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-brand-500 flex items-center justify-center text-dark-950 font-black shadow-lg shadow-brand-500/20 shrink-0">
             <Film className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div className="min-w-0">
+          <div className="hidden sm:block min-w-0">
             <h1 className="text-base sm:text-xl font-bold tracking-tight text-white flex items-center gap-1.5 sm:gap-2">
               <span>PlexPosters</span>
-              <span className="hidden sm:inline-flex text-xs px-1.5 py-0.5 rounded-full bg-brand-500/20 text-brand-500 border border-brand-500/30">
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-brand-500/20 text-brand-500 border border-brand-500/30">
                 v1.0
               </span>
             </h1>
-            <p className="text-xs text-gray-400 hidden sm:block truncate">Automated MediUX & Smart Title Card Generator</p>
+            <p className="text-xs text-gray-400 hidden md:block truncate">Automated MediUX & Smart Title Card Generator</p>
           </div>
         </div>
 
@@ -77,6 +82,38 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
+
+          {currentUser && (
+            <div className="flex items-center gap-1.5 sm:gap-2 pl-1.5 sm:pl-2 border-l border-gray-800 shrink-0">
+              <div className="flex items-center gap-1.5" title={`Signed in as ${currentUser.username}`}>
+                {currentUser.thumb ? (
+                  <img
+                    src={currentUser.thumb}
+                    alt={currentUser.username}
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-gray-700 object-cover"
+                  />
+                ) : (
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-dark-800 border border-gray-700 flex items-center justify-center text-[10px] sm:text-xs font-bold text-gray-300">
+                    {currentUser.username.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <span className="text-xs font-medium text-gray-300 hidden md:inline truncate max-w-[90px]">
+                  {currentUser.username}
+                </span>
+              </div>
+
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="bg-dark-800 hover:bg-rose-950/40 hover:text-rose-400 border border-gray-700 hover:border-rose-800/50 text-gray-400 p-1.5 sm:p-2 rounded-lg transition shrink-0"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </header>
