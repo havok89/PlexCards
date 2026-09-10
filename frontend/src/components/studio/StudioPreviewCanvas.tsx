@@ -38,7 +38,7 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
   currentEp
 }) => {
   return (
-    <div className="lg:col-span-7 p-3 sm:p-5 lg:p-6 flex flex-col gap-3 sm:gap-4 bg-dark-950/40 lg:overflow-y-auto min-h-0">
+    <div className="w-full lg:col-span-7 p-3 sm:p-5 lg:p-6 flex flex-col gap-3 sm:gap-4 bg-dark-950/40 shrink-0 lg:shrink lg:overflow-y-auto min-h-0">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2.5">
           <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
@@ -101,7 +101,7 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
       </div>
 
       {/* Preview Frame: Constrained on mobile/tablet, full on desktop */}
-      <div className="w-full flex justify-center">
+      <div className="w-full flex justify-center shrink-0">
         <div className="relative aspect-video w-full max-w-[340px] sm:max-w-[460px] lg:max-w-none bg-dark-900 border border-gray-800 rounded-xl overflow-hidden shadow-2xl flex items-center justify-center">
           {activeDisplayUrl ? (
             <img
@@ -166,7 +166,7 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
       </div>
 
       {currentEp && (
-        <div className="bg-dark-900 border border-gray-800 rounded-xl p-2.5 sm:p-3 text-[11px] sm:text-xs text-gray-400 flex items-center justify-between">
+        <div className="bg-dark-900 border border-gray-800 rounded-xl p-2.5 sm:p-3 text-[11px] sm:text-xs text-gray-400 flex items-center justify-between gap-2 shrink-0">
           <span className="truncate mr-2">
             Episode: <strong className="text-white">{currentEp.title}</strong>
           </span>

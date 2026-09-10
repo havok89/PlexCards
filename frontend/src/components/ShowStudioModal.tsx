@@ -606,8 +606,8 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           onApplyCards={handleApply}
         />
 
-        {/* Modal Body: 2 Columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 flex-1 min-h-0 overflow-y-auto lg:overflow-hidden divide-y lg:divide-y-0 lg:divide-x divide-gray-800">
+        {/* Modal Body: Responsive flex stack on mobile, 2 columns on desktop */}
+        <div className="flex flex-col lg:grid lg:grid-cols-12 flex-1 min-h-0 overflow-y-auto lg:overflow-hidden divide-y lg:divide-y-0 lg:divide-x divide-gray-800">
           {/* Left Column: Live Preview & Episode Picker */}
           <StudioPreviewCanvas
             show={activeShow}
@@ -627,7 +627,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           />
 
           {/* Right Column: Source Modes, MediUX Sets & Generator Styling */}
-          <div className="lg:col-span-5 p-3 sm:p-5 lg:p-6 flex flex-col gap-5 lg:overflow-y-auto min-h-0">
+          <div className="w-full lg:col-span-5 p-3 sm:p-5 lg:p-6 flex flex-col gap-5 shrink-0 lg:shrink lg:overflow-y-auto min-h-0">
             {/* Source Mode & MediUX Browser */}
             <MediuxSetBrowser
               mode={activeShow.mode}
