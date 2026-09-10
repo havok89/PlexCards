@@ -106,7 +106,8 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="e.g., Gritty thriller with bold white font..."
+              placeholder="e.g., Gritty thriller with bold gold font (or leave default)..."
+              title="Gemini analyzes the show's name, genres, synopsis, and any custom directions you provide."
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAiSuggest()}
@@ -141,7 +142,11 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
           value={styleConfig.text_position}
           onChange={(e) => {
             const pos = e.target.value as any;
-            const grad = pos.includes('bottom') ? 'bottom' : pos.includes('right') ? 'right' : 'left';
+            let grad: 'left' | 'right' | 'bottom' | 'top' | 'center' = 'left';
+            if (pos.includes('top')) grad = 'top';
+            else if (pos.includes('bottom')) grad = 'bottom';
+            else if (pos.includes('right')) grad = 'right';
+            else if (pos === 'center') grad = 'center';
             setStyleConfig((prev) => ({
               ...prev,
               text_position: pos,
@@ -150,12 +155,85 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
           }}
           className="w-full bg-dark-800 border border-gray-700 text-xs rounded-lg px-3 py-2 text-white focus:outline-none focus:border-brand-500"
         >
-          <option value="left_center">Left Middle</option>
           <option value="left_bottom">Bottom Left</option>
           <option value="center_bottom">Bottom Center</option>
-          <option value="right_center">Right Middle</option>
           <option value="right_bottom">Bottom Right</option>
+          <option value="left_center">Left Middle (Center Left)</option>
+          <option value="center">Center</option>
+          <option value="right_center">Right Middle (Center Right)</option>
+          <option value="top_left">Top Left</option>
+          <option value="top_center">Top Center</option>
+          <option value="top_right">Top Right</option>
         </select>
+      </div>
+
+      {/* Text Box Width */}
+      <div>
+        <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+          <span>Text Box Width</span>
+          <span className="font-mono text-gray-300">
+            {styleConfig.text_box_width_pct || 42}% of still
+            {(!styleConfig.text_box_width_pct || styleConfig.text_box_width_pct === 42) && (
+              <span className="text-brand-400 ml-1 font-sans text-[10px]">(Default)</span>
+            )}
+            {styleConfig.text_box_width_pct === 50 && (
+              <span className="text-emerald-400 ml-1 font-sans text-[10px]">(50% Half)</span>
+            )}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min="35"
+            max="75"
+            step="1"
+            value={styleConfig.text_box_width_pct || 42}
+            onChange={(e) =>
+              setStyleConfig((prev) => ({
+                ...prev,
+                text_box_width_pct: Number(e.target.value)
+              }))
+            }
+            className="w-full accent-brand-500 bg-dark-800 cursor-pointer"
+          />
+          <input
+            type="number"
+            min="35"
+            max="75"
+            value={styleConfig.text_box_width_pct || 42}
+            onChange={(e) => {
+              const val = Math.max(35, Math.min(75, Number(e.target.value) || 42));
+              setStyleConfig((prev) => ({
+                ...prev,
+                text_box_width_pct: val
+              }));
+            }}
+            className="w-14 bg-dark-800 border border-gray-700 text-xs rounded px-2 py-1 text-white text-center font-mono"
+          />
+        </div>
+        <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+          <button
+            type="button"
+            onClick={() => setStyleConfig((prev) => ({ ...prev, text_box_width_pct: 42 }))}
+            className={`hover:text-white transition ${(!styleConfig.text_box_width_pct || styleConfig.text_box_width_pct === 42) ? 'text-brand-400 font-semibold' : ''}`}
+          >
+            Default (42%)
+          </button>
+          <button
+            type="button"
+            onClick={() => setStyleConfig((prev) => ({ ...prev, text_box_width_pct: 50 }))}
+            className={`hover:text-white transition ${styleConfig.text_box_width_pct === 50 ? 'text-emerald-400 font-semibold' : ''}`}
+          >
+            Half Still (50%)
+          </button>
+          <button
+            type="button"
+            onClick={() => setStyleConfig((prev) => ({ ...prev, text_box_width_pct: 65 }))}
+            className={`hover:text-white transition ${styleConfig.text_box_width_pct === 65 ? 'text-white font-semibold' : ''}`}
+          >
+            Wide (65%)
+          </button>
+        </div>
       </div>
 
       {/* Font Family & Custom Font Upload */}
@@ -458,6 +536,73 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
                   }}
                   className="w-14 bg-dark-800 border border-gray-700 text-xs rounded px-2 py-1 text-white text-center font-mono"
                 />
+              </div>
+            </div>
+
+            {/* Subheading Distance to Title */}
+            <div>
+              <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                <span>Distance to Title (Gap)</span>
+                <span className="font-mono text-gray-300">{styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 12}px</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="48"
+                  value={styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 12}
+                  onChange={(e) =>
+                    setStyleConfig((prev) => ({
+                      ...prev,
+                      subheading_gap: Number(e.target.value)
+                    }))
+                  }
+                  className="w-full accent-brand-500 bg-dark-800 cursor-pointer"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="48"
+                  value={styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 12}
+                  onChange={(e) => {
+                    const val = Math.max(0, Math.min(48, Number(e.target.value) || 0));
+                    setStyleConfig((prev) => ({
+                      ...prev,
+                      subheading_gap: val
+                    }));
+                  }}
+                  className="w-14 bg-dark-800 border border-gray-700 text-xs rounded px-2 py-1 text-white text-center font-mono"
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setStyleConfig((prev) => ({ ...prev, subheading_gap: 4 }))}
+                  className={`hover:text-white transition ${styleConfig.subheading_gap === 4 ? 'text-brand-400 font-semibold' : ''}`}
+                >
+                  Tight (4px)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStyleConfig((prev) => ({ ...prev, subheading_gap: 12 }))}
+                  className={`hover:text-white transition ${(styleConfig.subheading_gap === undefined || styleConfig.subheading_gap === 12) ? 'text-emerald-400 font-semibold' : ''}`}
+                >
+                  Default (12px)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStyleConfig((prev) => ({ ...prev, subheading_gap: 20 }))}
+                  className={`hover:text-white transition ${styleConfig.subheading_gap === 20 ? 'text-white font-semibold' : ''}`}
+                >
+                  Relaxed (20px)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStyleConfig((prev) => ({ ...prev, subheading_gap: 32 }))}
+                  className={`hover:text-white transition ${styleConfig.subheading_gap === 32 ? 'text-white font-semibold' : ''}`}
+                >
+                  Wide (32px)
+                </button>
               </div>
             </div>
 

@@ -80,7 +80,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   const [styleConfig, setStyleConfig] = useState<StyleConfig>({
     layout: show.layout || 'standard',
     text_position: (show.text_position as any) || 'left_center',
-    font_family: show.font_family || 'Montserrat',
+    font_family: show.font_family || 'Oswald',
     font_color: show.font_color || '#FFFFFF',
     subheading_color: show.subheading_color || '#A3A3A3',
     gradient_side: show.gradient_side || 'left',
@@ -90,7 +90,9 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     subheading_format: show.subheading_format || 'season_num_ep_num',
     subheading_icon: normalizeSeparator(show.subheading_icon),
     title_font_size: show.title_font_size || 82,
-    subheading_font_size: show.subheading_font_size || 34
+    subheading_font_size: show.subheading_font_size || 34,
+    text_box_width_pct: show.text_box_width_pct || 42,
+    subheading_gap: show.subheading_gap !== undefined ? show.subheading_gap : 12
   });
 
   // Load details, episodes, fonts, and available sets
@@ -130,7 +132,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         setStyleConfig({
           layout: data.show.layout || 'standard',
           text_position: (data.show.text_position as any) || 'left_center',
-          font_family: data.show.font_family || 'Montserrat',
+          font_family: data.show.font_family || 'Oswald',
           font_color: data.show.font_color || '#FFFFFF',
           subheading_color: data.show.subheading_color || '#A3A3A3',
           gradient_side: data.show.gradient_side || 'left',
@@ -140,12 +142,33 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           subheading_format: data.show.subheading_format || 'season_num_ep_num',
           subheading_icon: normalizeSeparator(data.show.subheading_icon),
           title_font_size: data.show.title_font_size || 82,
-          subheading_font_size: data.show.subheading_font_size || 34
+          subheading_font_size: data.show.subheading_font_size || 34,
+          text_box_width_pct: data.show.text_box_width_pct || 42,
+          subheading_gap: data.show.subheading_gap !== undefined ? data.show.subheading_gap : 12
         });
         if (data.show.ai_prompt) {
           setAiReasoning(data.show.ai_prompt);
         }
       }
+
+      // Pre-populate AI prompt box with show name, genres, and synopsis if currently empty
+      setAiPrompt((currentPrompt) => {
+        if (currentPrompt.trim()) return currentPrompt;
+        const genresList = data.tmdb_info?.genres || [];
+        const genresStr = genresList.length > 0 ? genresList.join(', ') : '';
+        const rawOverview = (data.tmdb_info?.overview || '').trim();
+        const shortSynopsis = rawOverview.length > 130 ? rawOverview.slice(0, 127) + '...' : rawOverview;
+
+        let defaultPrompt = data.show?.title || show.title;
+        if (genresStr && shortSynopsis) {
+          defaultPrompt = `${defaultPrompt} (${genresStr}) - ${shortSynopsis}`;
+        } else if (genresStr) {
+          defaultPrompt = `${defaultPrompt} (${genresStr})`;
+        } else if (shortSynopsis) {
+          defaultPrompt = `${defaultPrompt} - ${shortSynopsis}`;
+        }
+        return defaultPrompt;
+      });
 
       if (data.initial_ai_generated) {
         onShowUpdated();
@@ -189,7 +212,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     if (!ep) return;
 
     // Check frontend in-memory cache first for instantaneous rendering
-    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.show_subheading}_${styleConfig.subheading_format}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}_${styleConfig.title_font_size}_${styleConfig.subheading_font_size}`;
+    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.show_subheading}_${styleConfig.subheading_format}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}_${styleConfig.title_font_size}_${styleConfig.subheading_font_size}_${styleConfig.text_box_width_pct || 42}_${styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 12}`;
     if (previewBlobCache.has(cacheKey)) {
       setPreviewUrl(previewBlobCache.get(cacheKey)!);
       setIsPreviewLoading(false);
@@ -409,14 +432,15 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
       setStyleConfig((prev) => ({
         ...prev,
         text_position: 'center_bottom',
-        font_family: 'Montserrat',
+        font_family: 'Oswald',
         font_color: '#FFFFFF',
         subheading_color: '#A3A3A3',
         subheading_icon: '-',
         gradient_side: 'bottom',
         gradient_width_pct: 45,
         title_font_size: 82,
-        subheading_font_size: 32
+        subheading_font_size: 32,
+        text_box_width_pct: 50
       }));
     }
   };
@@ -425,7 +449,8 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     setIsAiLoading(true);
     setAiReasoning('');
     try {
-      const suggestion = await api.askAi(activeShow.rating_key, aiPrompt);
+      const effectivePrompt = aiPrompt.trim() || activeShow.title || show.title;
+      const suggestion = await api.askAi(activeShow.rating_key, effectivePrompt);
       if (suggestion.font_family) {
         setStyleConfig((prev) => ({
           ...prev,

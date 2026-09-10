@@ -35,7 +35,7 @@ def init_db():
         rating_key TEXT PRIMARY KEY,
         layout TEXT DEFAULT 'standard',
         text_position TEXT DEFAULT 'left_center', -- 'left_center', 'left_bottom', 'center_bottom', 'right_center', 'right_bottom'
-        font_family TEXT DEFAULT 'Montserrat',
+        font_family TEXT DEFAULT 'Oswald',
         font_color TEXT DEFAULT '#FFFFFF',
         subheading_color TEXT DEFAULT '#A3A3A3',
         gradient_side TEXT DEFAULT 'left',
@@ -48,6 +48,8 @@ def init_db():
         has_custom_style INTEGER DEFAULT 0,
         title_font_size INTEGER DEFAULT 82,
         subheading_font_size INTEGER DEFAULT 34,
+        text_box_width_pct INTEGER DEFAULT 42,
+        subheading_gap INTEGER DEFAULT 12,
         FOREIGN KEY(rating_key) REFERENCES shows(rating_key) ON DELETE CASCADE
     )
     """)
@@ -63,6 +65,10 @@ def init_db():
         cursor.execute("ALTER TABLE show_styles ADD COLUMN title_font_size INTEGER DEFAULT 82")
     if "subheading_font_size" not in columns:
         cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_font_size INTEGER DEFAULT 34")
+    if "text_box_width_pct" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN text_box_width_pct INTEGER DEFAULT 42")
+    if "subheading_gap" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_gap INTEGER DEFAULT 12")
     
     # Episode records and card status
     cursor.execute("""
@@ -181,7 +187,9 @@ def get_show(rating_key: str) -> Optional[Dict[str, Any]]:
            st.show_subheading, st.subheading_format, st.subheading_icon, st.ai_prompt,
            st.has_custom_style,
            COALESCE(st.title_font_size, 82) AS title_font_size,
-           COALESCE(st.subheading_font_size, 34) AS subheading_font_size
+           COALESCE(st.subheading_font_size, 34) AS subheading_font_size,
+           COALESCE(st.text_box_width_pct, 42) AS text_box_width_pct,
+           COALESCE(st.subheading_gap, 12) AS subheading_gap
     FROM shows s
     LEFT JOIN show_styles st ON s.rating_key = st.rating_key
     WHERE s.rating_key = ?
@@ -201,6 +209,8 @@ def get_all_shows() -> List[Dict[str, Any]]:
            COALESCE(st.has_custom_style, 0) AS has_custom_style,
            COALESCE(st.title_font_size, 82) AS title_font_size,
            COALESCE(st.subheading_font_size, 34) AS subheading_font_size,
+           COALESCE(st.text_box_width_pct, 42) AS text_box_width_pct,
+           COALESCE(st.subheading_gap, 12) AS subheading_gap,
            (SELECT COUNT(*) FROM episodes e WHERE e.show_rating_key = s.rating_key AND e.card_source = 'mediux') AS mediux_cards_count,
            (SELECT COUNT(*) FROM episodes e WHERE e.show_rating_key = s.rating_key AND e.card_source LIKE 'generator%') AS generator_cards_count
     FROM shows s
@@ -229,11 +239,11 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
     INSERT INTO show_styles (rating_key, layout, text_position, font_family, font_color, subheading_color, 
                              gradient_side, gradient_width_pct, gradient_opacity_pct, 
                              show_subheading, subheading_format, subheading_icon, ai_prompt, has_custom_style,
-                             title_font_size, subheading_font_size)
+                             title_font_size, subheading_font_size, text_box_width_pct, subheading_gap)
     VALUES (:rating_key, 
             COALESCE(:layout, 'standard'), 
             COALESCE(:text_position, 'left_center'), 
-            COALESCE(:font_family, 'Montserrat'), 
+            COALESCE(:font_family, 'Oswald'), 
             COALESCE(:font_color, '#FFFFFF'), 
             COALESCE(:subheading_color, '#A3A3A3'), 
             COALESCE(:gradient_side, 'left'), 
@@ -245,7 +255,9 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
             :ai_prompt, 
             COALESCE(:has_custom_style, 1),
             COALESCE(:title_font_size, 82),
-            COALESCE(:subheading_font_size, 34))
+            COALESCE(:subheading_font_size, 34),
+            COALESCE(:text_box_width_pct, 42),
+            COALESCE(:subheading_gap, 12))
     ON CONFLICT(rating_key) DO UPDATE SET
         layout = COALESCE(excluded.layout, show_styles.layout),
         text_position = COALESCE(excluded.text_position, show_styles.text_position),
@@ -261,7 +273,9 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
         ai_prompt = COALESCE(excluded.ai_prompt, show_styles.ai_prompt),
         has_custom_style = COALESCE(excluded.has_custom_style, 1),
         title_font_size = COALESCE(excluded.title_font_size, show_styles.title_font_size),
-        subheading_font_size = COALESCE(excluded.subheading_font_size, show_styles.subheading_font_size)
+        subheading_font_size = COALESCE(excluded.subheading_font_size, show_styles.subheading_font_size),
+        text_box_width_pct = COALESCE(excluded.text_box_width_pct, show_styles.text_box_width_pct),
+        subheading_gap = COALESCE(excluded.subheading_gap, show_styles.subheading_gap)
     """, {
         "layout": style_data.get("layout"),
         "text_position": style_data.get("text_position"),
@@ -278,6 +292,8 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
         "has_custom_style": style_data.get("has_custom_style", 1),
         "title_font_size": style_data.get("title_font_size"),
         "subheading_font_size": style_data.get("subheading_font_size"),
+        "text_box_width_pct": style_data.get("text_box_width_pct"),
+        "subheading_gap": style_data.get("subheading_gap"),
         "rating_key": rating_key
     })
     conn.commit()

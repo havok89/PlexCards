@@ -35,14 +35,25 @@ class TitleCardRenderer:
         self._ensure_default_fonts()
 
     def _ensure_default_fonts(self):
-        """Ensure standard fallback fonts are cached."""
-        default_fonts = {
+        """Ensure standard fallback and genre-diverse fonts are pre-cached."""
+        default_font_urls = {
             "Oswald": "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald%5Bwght%5D.ttf",
             "Orbitron": "https://github.com/google/fonts/raw/main/ofl/orbitron/Orbitron%5Bwght%5D.ttf",
             "Bebas Neue": "https://github.com/google/fonts/raw/main/ofl/bebasneue/BebasNeue-Regular.ttf",
-            "Montserrat": "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat%5Bwght%5D.ttf"
+            "Cinzel": "https://github.com/google/fonts/raw/main/ofl/cinzel/Cinzel%5Bwght%5D.ttf",
+            "Anton": "https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf",
+            "Inter": "https://github.com/google/fonts/raw/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf",
+            "Righteous": "https://github.com/google/fonts/raw/main/ofl/righteous/Righteous-Regular.ttf",
+            "Playfair Display": "https://github.com/google/fonts/raw/main/ofl/playfairdisplay/PlayfairDisplay%5Bwght%5D.ttf",
+            "Space Grotesk": "https://github.com/google/fonts/raw/main/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf",
+            "Archivo Black": "https://github.com/google/fonts/raw/main/ofl/archivoblack/ArchivoBlack-Regular.ttf",
+            "Syne": "https://github.com/google/fonts/raw/main/ofl/syne/Syne%5Bwght%5D.ttf",
+            "Teko": "https://github.com/google/fonts/raw/main/ofl/teko/Teko%5Bwght%5D.ttf",
+            "Michroma": "https://github.com/google/fonts/raw/main/ofl/michroma/Michroma-Regular.ttf",
+            "Rubik": "https://github.com/google/fonts/raw/main/ofl/rubik/Rubik%5Bwght%5D.ttf",
+            "Barlow Condensed": "https://github.com/google/fonts/raw/main/ofl/barlowcondensed/BarlowCondensed-Bold.ttf"
         }
-        for name, url in default_fonts.items():
+        for name, url in default_font_urls.items():
             path = self.fonts_dir / f"{name.replace(' ', '')}.ttf"
             if not path.exists():
                 try:
@@ -50,8 +61,14 @@ class TitleCardRenderer:
                     if r.status_code == 200:
                         with open(path, "wb") as f:
                             f.write(r.content)
+                        continue
+                except Exception:
+                    pass
+                # Fallback to automated Google Fonts API download
+                try:
+                    self.download_open_source_font(name)
                 except Exception as e:
-                    logger.warning(f"Could not download font {name}: {e}")
+                    logger.debug(f"Could not download font {name}: {e}")
 
     def download_open_source_font(self, font_name: str) -> Optional[Path]:
         """Automatically fetch any open-source font on-the-fly via Google Fonts API."""
@@ -105,7 +122,7 @@ class TitleCardRenderer:
             return downloaded
 
         # 4. Fallback to standard clean font
-        for fallback in ["Montserrat.ttf", "Oswald.ttf", "BebasNeue.ttf"]:
+        for fallback in ["Oswald.ttf", "BebasNeue.ttf", "Orbitron.ttf"]:
             p = self.fonts_dir / fallback
             if p.exists():
                 return p
@@ -121,6 +138,8 @@ class TitleCardRenderer:
         for ext in ["*.ttf", "*.otf"]:
             for p in self.custom_fonts_dir.glob(ext):
                 name = p.stem
+                if "montserrat" in name.lower():
+                    continue
                 if name.lower() not in seen:
                     seen.add(name.lower())
                     fonts.append({"name": name, "type": "custom", "filename": p.name})
@@ -129,6 +148,8 @@ class TitleCardRenderer:
         for ext in ["*.ttf", "*.otf"]:
             for p in self.fonts_dir.glob(ext):
                 name = p.stem
+                if "montserrat" in name.lower():
+                    continue
                 if name.lower() not in seen:
                     seen.add(name.lower())
                     fonts.append({"name": name, "type": "open_source", "filename": p.name})
@@ -202,25 +223,55 @@ class TitleCardRenderer:
         """Render a title card with styled typography, positioning, and gradients."""
         style = style_config or {}
         text_pos = style.get("text_position", "left_center")
-        font_family = style.get("font_family", "Montserrat")
+        font_family = style.get("font_family", "Oswald")
         font_color = hex_to_rgb(style.get("font_color", "#FFFFFF"))
         sub_color = hex_to_rgb(style.get("subheading_color", "#A3A3A3"))
         
+        # Determine positioning flags
+        is_top = "top" in text_pos
+        is_bottom = "bottom" in text_pos
+        is_middle = not is_top and not is_bottom
+
+        is_h_center = text_pos in ("center", "center_center", "middle_center") or ("center" in text_pos and (is_top or is_bottom))
+        is_h_right = "right" in text_pos
+        is_h_left = not is_h_center and not is_h_right
+
         # Determine gradient direction based on text position if not custom
         default_grad = "left"
-        if "bottom" in text_pos:
+        if is_top:
+            default_grad = "top"
+        elif is_bottom:
             default_grad = "bottom"
-        elif "right" in text_pos:
+        elif is_h_right:
             default_grad = "right"
+        elif is_h_center:
+            default_grad = "center"
             
         grad_side = style.get("gradient_side", default_grad)
-        grad_width_pct = style.get("gradient_width_pct", 50 if "bottom" in text_pos else 48)
+        grad_width_pct = style.get("gradient_width_pct", 50 if (is_bottom or is_top) else 48)
         grad_opacity_pct = style.get("gradient_opacity_pct", 90)
         show_subheading = bool(style.get("show_subheading", 1))
         sub_icon = style.get("subheading_icon", "dot")
         sub_fmt = style.get("subheading_format", "season_num_ep_num")
         title_font_size = int(style.get("title_font_size") or 82)
         sub_font_size = int(style.get("subheading_font_size") or 34)
+        sub_gap = int(style.get("subheading_gap") if style.get("subheading_gap") is not None else 12)
+
+        # 3. Text Preparation & Width Calculation
+        # Layout metrics based on text_position and text_box_width_pct
+        margin_side = 110
+        custom_tb_pct = style.get("text_box_width_pct")
+        if custom_tb_pct:
+            # Custom text box width percentage (e.g. 50% = 960px of the still)
+            max_title_width = int(1920 * (int(custom_tb_pct) / 100.0))
+            if not is_h_center and grad_side in ("left", "right"):
+                min_grad = int(((max_title_width + margin_side + 40) / 1920.0) * 100)
+                grad_width_pct = max(grad_width_pct, min_grad)
+        elif is_h_center:
+            max_title_width = 1500
+        else:
+            # Default width: ~42% of still width (~780px)
+            max_title_width = int(1920 * (grad_width_pct / 100.0)) - margin_side - 30
         
         # Load and resize base still to standard 1080p
         base_img = Image.open(base_image_path).convert("RGBA")
@@ -239,14 +290,6 @@ class TitleCardRenderer:
         else:
             sub_font = ImageFont.load_default()
             title_font = ImageFont.load_default()
-
-        # 3. Text Preparation
-        # Layout metrics based on text_position
-        margin_side = 110
-        if "center_bottom" in text_pos:
-            max_title_width = 1500
-        else:
-            max_title_width = int(1920 * (grad_width_pct / 100.0)) - margin_side - 30
         
         # Word wrap
         lines = []
@@ -268,13 +311,16 @@ class TitleCardRenderer:
         total_title_height = len(lines) * line_height
 
         # Compute Vertical Start Y
-        if "center" in text_pos:
-            start_y = 540 - (total_title_height // 2)
-        else: # bottom
+        if is_top:
+            sub_y = 110
+            start_y = sub_y + (sub_font_size + sub_gap if show_subheading else 0)
+        elif is_bottom:
             bottom_baseline = 980
             start_y = bottom_baseline - total_title_height
-
-        sub_y = start_y - sub_font_size - int(title_font_size * 0.38)
+            sub_y = start_y - sub_font_size - sub_gap
+        else: # middle / center
+            start_y = 540 - (total_title_height // 2)
+            sub_y = start_y - sub_font_size - sub_gap
 
         # 4. Render Subheading
         if show_subheading:
@@ -319,9 +365,9 @@ class TitleCardRenderer:
                 total_sub_w = 0
 
             if total_sub_w > 0:
-                if text_pos == "center_bottom":
+                if is_h_center:
                     sub_start_x = (1920 - total_sub_w) // 2
-                elif "right" in text_pos:
+                elif is_h_right:
                     sub_start_x = 1920 - margin_side - total_sub_w
                 else:
                     sub_start_x = margin_side
@@ -353,9 +399,9 @@ class TitleCardRenderer:
             line_bbox = draw.textbbox((0, 0), line, font=title_font)
             line_w = line_bbox[2] - line_bbox[0]
             
-            if text_pos == "center_bottom":
+            if is_h_center:
                 line_x = (1920 - line_w) // 2
-            elif "right" in text_pos:
+            elif is_h_right:
                 line_x = 1920 - margin_side - line_w
             else:
                 line_x = margin_side
@@ -392,5 +438,20 @@ class TitleCardRenderer:
                 progress = (1080 - y) / grad_h
                 alpha = int(max_alpha * ((1 - progress) ** 1.4))
                 draw.line([(0, y), (1920, y)], fill=(0, 0, 0, alpha))
+        elif side == "top":
+            grad_h = int(1080 * (width_pct / 100.0))
+            for y in range(grad_h):
+                progress = y / grad_h
+                alpha = int(max_alpha * ((1 - progress) ** 1.4))
+                draw.line([(0, y), (1920, y)], fill=(0, 0, 0, alpha))
+        elif side in ("center", "radial", "middle"):
+            from PIL import ImageFilter
+            mask = Image.new("L", (1920, 1080), 0)
+            mdraw = ImageDraw.Draw(mask)
+            rx = int(960 * (width_pct / 100.0))
+            ry = int(540 * (width_pct / 100.0))
+            mdraw.ellipse([(960 - rx, 540 - ry), (960 + rx, 540 + ry)], fill=max_alpha)
+            mask = mask.filter(ImageFilter.GaussianBlur(radius=70))
+            gradient.paste((0, 0, 0, 255), (0, 0, 1920, 1080), mask=mask)
                 
         return gradient

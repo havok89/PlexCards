@@ -51,19 +51,24 @@ User Style Direction: {user_prompt or 'Match the authentic tone, genre, and aest
    - Text must be immediately legible and readable at a glance over photographic, potentially bright or busy episode background images.
    - Choose fonts with strong glyph definition and clean letterforms. Never choose illegible decorative or spindly script fonts for episode titles.
 
-2. TYPOGRAPHY DIVERSITY BY GENRE:
-   Select a distinctive, high-quality open-source font tailored to the show's aesthetic from Google Fonts / open font libraries:
-   - Sci-Fi / Cyberpunk / Tech: Orbitron, Michroma, Space Grotesk, Syne, Rajdhani, Audiowide, Exo 2
-   - Thriller / Crime / Action: Bebas Neue, Oswald, Anton, Barlow Condensed, Teko, Archivo Black
+2. TYPOGRAPHY DIVERSITY BY GENRE & MOOD:
+   Select a distinctive, high-quality open-source font tailored to the show's aesthetic from Google Fonts / open font libraries.
+   
+   CRITICAL: DO NOT REPEATEDLY SUGGEST THE SAME DEFAULT FONTS! Ensure creative, varied, genre-specific typography across different shows:
+   - Sci-Fi / Cyberpunk / Tech: Orbitron, Space Grotesk, Michroma, Rajdhani, Syne, Audiowide, Exo 2, Saira
+   - Thriller / Crime / Action: Anton, Teko, Barlow Condensed, Archivo Black, Oswald, Kanit, Saira Condensed
    - Prestige Drama / Mystery / Romance: Cinzel, Playfair Display, Bodoni Moda, Cormorant Garamond, Prata, DM Serif Display
-   - Comedy / Animation / Light Drama: Montserrat, Poppins, Jost, Outfit, Rubik, Lexend
-   - Horror / Dark Fantasy / Supernatural: Cinzel Decorative, Syne, Creepster, Rye, UnifrakturMaguntia
-   - Documentary / Neo-Noir / Procedural: Inter, Work Sans, DM Sans, Oswald, Chivo
-   If the show has iconic branding, provide the closest open-source equivalent.
+   - Modern Drama / True Crime / Corporate: Inter, Outfit, DM Sans, Plus Jakarta Sans, Work Sans, Chivo
+   - Comedy / Animation / Sitcom / Lighthearted: Poppins, Rubik, Fredoka, Righteous, Bangers, Jost, Lexend
+   - Horror / Supernatural / Dark Fantasy: Cinzel Decorative, Syne, Creepster, Rye, UnifrakturMaguntia, Metal Mania
+   - Retro / 70s / 80s / Synthwave: Righteous, Monoton, Bungee, Shrikhand, Press Start 2P
+   
+   Choose the font that best captures the specific era, genre, and unique visual identity of '{show_title}'.
 
 3. GRADIENT USAGE & PLACEMENT:
    - The rendering engine applies a smooth, dark shadow gradient (black fading to transparent) directly behind the text area to guarantee contrast against bright or dynamic episode imagery.
    - You MUST align "gradient_side" with "text_position":
+     * If "text_position" contains "top" ("top_left", "top_center", "top_right"), use "gradient_side": "top".
      * If "text_position" contains "bottom" ("center_bottom", "left_bottom", "right_bottom"), use "gradient_side": "bottom".
      * If "text_position" is "left_center", use "gradient_side": "left".
      * If "text_position" is "right_center", use "gradient_side": "right".
@@ -82,8 +87,8 @@ Return ONLY a JSON object with these exact keys:
 - "subheading_font_size": Integer between 26 and 40 (default 34). Proportional companion size to the title font.
 - "font_color": High-luminance hex color code for the main episode title (e.g. "#FFFFFF", "#F4B84D", "#00E5FF", "#FF5252", "#E0E0E0")
 - "subheading_color": Complementary, readable hex color for season/episode text (e.g. "#E5E7EB", "#D1D5DB", "#F4B84D")
-- "text_position": One of ["left_center", "left_bottom", "center_bottom", "right_center", "right_bottom"]
-- "gradient_side": "left", "bottom", or "right" (must strictly match text_position as described above)
+- "text_position": One of ["left_center", "left_bottom", "center_bottom", "right_center", "right_bottom", "top_left", "center"]
+- "gradient_side": "left", "bottom", "right", or "top" (must strictly match text_position as described above)
 - "gradient_width_pct": Integer between 40 and 55
 - "gradient_opacity_pct": Integer between 82 and 95
 - "subheading_icon": A single character separator between season and episode text (e.g. "•", "-", ":", "|", ".", "/", "~", "=" or "" for none). NEVER suggest deltas or logos; always use a clean typographical character separator that complements the show's typography.
@@ -106,11 +111,13 @@ Return ONLY a JSON object with these exact keys:
 
             # Defensive post-processing: enforce gradient placement matches text position
             text_pos = data.get("text_position", "left_center")
-            if "bottom" in text_pos and data.get("gradient_side") != "bottom":
+            if "top" in text_pos and data.get("gradient_side") != "top":
+                data["gradient_side"] = "top"
+            elif "bottom" in text_pos and data.get("gradient_side") != "bottom":
                 data["gradient_side"] = "bottom"
-            elif "right" in text_pos and data.get("gradient_side") not in ("right", "bottom"):
+            elif "right" in text_pos and data.get("gradient_side") not in ("right", "bottom", "top"):
                 data["gradient_side"] = "right"
-            elif "left" in text_pos and data.get("gradient_side") not in ("left", "bottom"):
+            elif "left" in text_pos and data.get("gradient_side") not in ("left", "bottom", "top"):
                 data["gradient_side"] = "left"
 
             # Defensive post-processing: font sizes bounds

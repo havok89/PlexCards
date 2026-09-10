@@ -320,10 +320,21 @@ def get_show_details(rating_key: str):
         except Exception as e:
             logger.warning(f"Could not load MediUX sets: {e}")
 
-    # Fetch TMDb show info (genres, overview)
+    # Fetch TMDb show info (genres, overview) with Plex fallback
     tmdb_info = None
     if tmdb_id:
         tmdb_info = tmdb.get_show_details(tmdb_id)
+    if not tmdb_info:
+        tmdb_info = {}
+    if not tmdb_info.get("genres") or not tmdb_info.get("overview"):
+        try:
+            plex_item = sync_mgr.plex.server.fetchItem(int(rating_key))
+            if not tmdb_info.get("genres") and hasattr(plex_item, "genres"):
+                tmdb_info["genres"] = [g.tag for g in plex_item.genres]
+            if not tmdb_info.get("overview") and hasattr(plex_item, "summary"):
+                tmdb_info["overview"] = plex_item.summary
+        except Exception:
+            pass
 
     # Request 2: If style doesn't exist yet, check auto_gemini setting before querying Gemini
     auto_gemini = get_setting("auto_gemini_suggestion", "true").lower() == "true"
@@ -494,7 +505,9 @@ def generate_preview(rating_key: str, payload: dict = Body(...)):
         "sub": style.get("show_subheading"),
         "sub_fmt": style.get("subheading_format"),
         "tfs": style.get("title_font_size", 82),
-        "sfs": style.get("subheading_font_size", 34)
+        "sfs": style.get("subheading_font_size", 34),
+        "tbw": style.get("text_box_width_pct", 42),
+        "sg": style.get("subheading_gap", 12)
     }, sort_keys=True).encode()).hexdigest()
 
     cached_preview = PREVIEWS_DIR / f"{cache_key}.jpg"
@@ -566,6 +579,16 @@ def ai_suggest_style(rating_key: str, payload: dict = Body(...)):
     
     genres = tmdb_info.get("genres", [])
     overview = tmdb_info.get("overview", "")
+    if not genres or not overview:
+        try:
+            plex_item = sync_mgr.plex.server.fetchItem(int(rating_key))
+            if not genres and hasattr(plex_item, "genres"):
+                genres = [g.tag for g in plex_item.genres]
+            if not overview and hasattr(plex_item, "summary"):
+                overview = plex_item.summary
+        except Exception:
+            pass
+
     user_prompt = payload.get("prompt", "")
 
     suggestion = ai_styler.suggest_style(

@@ -14,11 +14,11 @@ export interface Show {
 
   // Style attributes attached to show
   layout?: string;
-  text_position?: 'left_center' | 'left_bottom' | 'center_bottom' | 'right_center' | 'right_bottom';
+  text_position?: 'left_center' | 'left_bottom' | 'center_bottom' | 'right_center' | 'right_bottom' | 'top_left' | 'top_center' | 'top_right' | 'center' | 'center_right' | 'bottom_center';
   font_family?: string;
   font_color?: string;
   subheading_color?: string;
-  gradient_side?: 'left' | 'right' | 'bottom';
+  gradient_side?: 'left' | 'right' | 'bottom' | 'top' | 'center';
   gradient_width_pct?: number;
   gradient_opacity_pct?: number;
   show_subheading?: number;
@@ -26,6 +26,8 @@ export interface Show {
   subheading_icon?: string;
   title_font_size?: number;
   subheading_font_size?: number;
+  text_box_width_pct?: number;
+  subheading_gap?: number;
   ai_prompt?: string;
   has_custom_style?: number;
 }
@@ -40,11 +42,11 @@ export interface Episode {
 
 export interface StyleConfig {
   layout: string;
-  text_position: 'left_center' | 'left_bottom' | 'center_bottom' | 'right_center' | 'right_bottom';
+  text_position: 'left_center' | 'left_bottom' | 'center_bottom' | 'right_center' | 'right_bottom' | 'top_left' | 'top_center' | 'top_right' | 'center' | 'center_right' | 'bottom_center';
   font_family: string;
   font_color: string;
   subheading_color: string;
-  gradient_side: 'left' | 'right' | 'bottom';
+  gradient_side: 'left' | 'right' | 'bottom' | 'top' | 'center';
   gradient_width_pct: number;
   gradient_opacity_pct: number;
   show_subheading: number;
@@ -52,6 +54,8 @@ export interface StyleConfig {
   subheading_icon: string;
   title_font_size: number;
   subheading_font_size: number;
+  text_box_width_pct?: number;
+  subheading_gap?: number;
   ai_prompt?: string;
 }
 
