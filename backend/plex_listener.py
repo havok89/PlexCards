@@ -24,7 +24,23 @@ class PlexAlertListenerDaemon:
         self._connected = False
         self._tv_section_id: Optional[str] = None
         self._debounce_timers: Dict[str, threading.Timer] = {}
+        self._ignored_shows: Dict[str, float] = {}
         self._lock = threading.Lock()
+
+    def ignore_show(self, show_key: str, duration: float = 30.0):
+        """Temporarily ignore incoming Plex events for a show to avoid feedback loops from our own uploads."""
+        with self._lock:
+            self._ignored_shows[str(show_key)] = time.time() + duration
+
+    def is_show_ignored(self, show_key: str) -> bool:
+        """Check if a show is currently in the ignore window."""
+        with self._lock:
+            exp = self._ignored_shows.get(str(show_key), 0)
+            if time.time() < exp:
+                return True
+            if str(show_key) in self._ignored_shows:
+                del self._ignored_shows[str(show_key)]
+            return False
 
     @property
     def is_connected(self) -> bool:
@@ -156,17 +172,36 @@ class PlexAlertListenerDaemon:
 
             item_type = getattr(item, 'type', None)
 
+            # Ignore season events completely - seasons are not media files, and updates are triggered by poster uploads
+            if item_type == 'season':
+                return
+
             if item_type == 'episode':
                 show = item.show()
                 show_key = str(show.ratingKey)
+
+                # Ignore feedback loops from recent PlexPosters uploads
+                if self.is_show_ignored(show_key):
+                    logger.debug(f"Plex alert ignored for '{show.title}' (active PlexPosters upload window).")
+                    return
+
+                ep_key = str(item.ratingKey)
                 s_num = item.seasonNumber
                 e_num = item.index
                 ep_title = item.title or f"Episode {e_num}"
-                ep_key = str(item.ratingKey)
 
-                # Record newly found episode in SQLite database
+                # Check if episode is already indexed and already has title card artwork
                 conn = get_db()
                 cursor = conn.cursor()
+                cursor.execute("SELECT rating_key, card_source FROM episodes WHERE rating_key = ?", (ep_key,))
+                existing_ep = cursor.fetchone()
+
+                if existing_ep and existing_ep["card_source"] not in (None, "", "none"):
+                    conn.close()
+                    logger.debug(f"Plex alert ignored: S{s_num:02d}E{e_num:02d} for '{show.title}' already has artwork.")
+                    return
+
+                # Record newly found episode in SQLite database
                 cursor.execute("""
                 INSERT INTO episodes (rating_key, show_rating_key, season_number, episode_number, title)
                 VALUES (?, ?, ?, ?, ?)
@@ -177,19 +212,19 @@ class PlexAlertListenerDaemon:
                 conn.commit()
                 conn.close()
 
-                logger.info(f"✨ Real-time alert: Detected S{s_num:02d}E{e_num:02d} '{ep_title}' for '{show.title}'")
+                logger.info(f"✨ Real-time alert: Detected new episode S{s_num:02d}E{e_num:02d} '{ep_title}' for '{show.title}'")
                 self._schedule_show_sync(show_key, show.title)
 
             elif item_type == 'show':
                 show_key = str(item.ratingKey)
-                logger.info(f"✨ Real-time alert: Detected update for show '{item.title}'")
-                self._schedule_show_sync(show_key, item.title)
+                if self.is_show_ignored(show_key):
+                    return
 
-            elif item_type == 'season':
-                show = item.show()
-                show_key = str(show.ratingKey)
-                logger.info(f"✨ Real-time alert: Detected season update for '{show.title}'")
-                self._schedule_show_sync(show_key, show.title)
+                # Only trigger for genuinely new shows not yet indexed in database
+                existing_show = get_show(show_key)
+                if not existing_show:
+                    logger.info(f"✨ Real-time alert: Detected new show '{item.title}'")
+                    self._schedule_show_sync(show_key, item.title)
 
         except Exception as e:
             logger.debug(f"Could not inspect timeline item {item_id}: {e}")
@@ -212,6 +247,9 @@ class PlexAlertListenerDaemon:
 
         try:
             logger.info(f"⚡ Live Trigger: Processing cards for '{show_title}' ({show_key})...")
+            # Mark show as ignored for 45s so our own uploads don't re-trigger the listener
+            self.ignore_show(show_key, duration=45.0)
+
             show = get_show(show_key)
 
             # If show is brand new and not yet in database, index it first

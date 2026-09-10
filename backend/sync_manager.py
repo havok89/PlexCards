@@ -72,6 +72,13 @@ class SyncManager:
             yield {"type": "error", "message": f"Show with rating_key {rating_key} not found"}
             return
 
+        # Tell real-time listener to ignore feedback events for this show while we upload
+        try:
+            from backend.plex_listener import plex_listener
+            plex_listener.ignore_show(rating_key, duration=60.0)
+        except Exception:
+            pass
+
         mode = show.get("mode", "auto")
         if mode == "ignored":
             yield {"type": "done", "result": {"status": "skipped", "message": "Show is set to ignored"}}
@@ -350,10 +357,20 @@ class SyncManager:
                             except Exception as e:
                                 logger.warning(f"Could not save test season poster: {e}")
 
+                    try:
+                        from backend.plex_listener import plex_listener
+                        plex_listener.ignore_show(rating_key, duration=30.0)
+                    except Exception:
+                        pass
                     self.plex.upload_season_poster(season["rating_key"], poster_url, force_live=force_live)
                     updated_season_posters += 1
 
         poster_msg = f" and {updated_season_posters} season posters" if updated_season_posters > 0 else ""
+        try:
+            from backend.plex_listener import plex_listener
+            plex_listener.ignore_show(rating_key, duration=30.0)
+        except Exception:
+            pass
         yield {
             "type": "done",
             "result": {
