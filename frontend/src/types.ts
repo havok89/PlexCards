@@ -79,6 +79,7 @@ export interface AppConfig {
   poll_interval_hours: number;
   listener_connected?: boolean;
   auth_enabled?: boolean;
+  has_gemini_key?: boolean;
 }
 
 export interface AuthUser {

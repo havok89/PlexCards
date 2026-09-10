@@ -91,7 +91,8 @@ def get_config_info():
         "tv_library": PLEX_TV_LIBRARY,
         "poll_interval_hours": POLL_INTERVAL_HOURS,
         "listener_connected": plex_listener.is_connected,
-        "auth_enabled": config.ENABLE_AUTH
+        "auth_enabled": config.ENABLE_AUTH,
+        "has_gemini_key": bool(ai_styler.api_key)
     }
 
 # ----------------------------------------------------
@@ -388,7 +389,8 @@ def get_show_details(rating_key: str):
         "preferred_creators": preferred_creators,
         "tmdb_info": tmdb_info,
         "initial_ai_generated": initial_ai_generated,
-        "ai_error": ai_error
+        "ai_error": ai_error,
+        "has_gemini_key": bool(ai_styler.api_key)
     }
 
 @app.get("/api/settings")

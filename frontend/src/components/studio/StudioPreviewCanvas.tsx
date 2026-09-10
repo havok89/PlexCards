@@ -19,6 +19,7 @@ interface StudioPreviewCanvasProps {
   isPreviewLoading: boolean;
   previewUrl: string | null;
   currentEp?: Episode;
+  hasGeminiKey?: boolean;
 }
 
 export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
@@ -35,7 +36,8 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
   activeMediuxSet,
   isPreviewLoading,
   previewUrl,
-  currentEp
+  currentEp,
+  hasGeminiKey = true
 }) => {
   return (
     <div className="w-full lg:col-span-7 p-3 sm:p-5 lg:p-6 flex flex-col gap-3 sm:gap-4 bg-dark-950/40 shrink-0 lg:shrink lg:overflow-y-auto min-h-0">
@@ -109,7 +111,7 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
               alt="Title Card Preview"
               className="w-full h-full object-cover"
             />
-          ) : isEpisodesLoading && !show.has_custom_style ? (
+          ) : isEpisodesLoading && !show.has_custom_style && hasGeminiKey ? (
             <div className="flex flex-col items-center justify-center text-center p-6 gap-3 max-w-sm">
               <div className="relative">
                 <Loader2 className="w-9 h-9 animate-spin text-purple-400" />

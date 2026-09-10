@@ -42,6 +42,7 @@ export const api = {
     tmdb_info?: any;
     initial_ai_generated?: boolean;
     ai_error?: string | null;
+    has_gemini_key?: boolean;
   }> {
     const res = await fetch(`/api/shows/${ratingKey}`);
     return res.json();

@@ -198,6 +198,7 @@ export const App: React.FC = () => {
         <ShowStudioModal
           show={selectedShow}
           testMode={config.test_mode}
+          hasGeminiKey={config.has_gemini_key}
           onClose={() => setSelectedShow(null)}
           onShowUpdated={loadData}
         />
@@ -210,6 +211,7 @@ export const App: React.FC = () => {
           testMode={config.test_mode}
           tvLibrary={config.tv_library}
           listenerConnected={config.listener_connected}
+          hasGeminiKey={config.has_gemini_key}
         />
       )}
     </div>

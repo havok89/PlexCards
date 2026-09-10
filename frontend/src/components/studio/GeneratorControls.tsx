@@ -44,6 +44,7 @@ interface GeneratorControlsProps {
   handleFontUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleSaveStyle: () => void;
   isSavedJustNow: boolean;
+  hasGeminiKey?: boolean;
 }
 
 export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
@@ -61,7 +62,8 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
   isUploadingFont,
   handleFontUpload,
   handleSaveStyle,
-  isSavedJustNow
+  isSavedJustNow,
+  hasGeminiKey = true
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -90,50 +92,52 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
       </div>
 
       {/* AI Assistant */}
-      <div className="bg-dark-850 border border-purple-500/30 rounded-xl p-3 flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-purple-300 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-purple-400" /> AI Style Assistant
-          </span>
-          <span className="text-[10px] text-gray-500">Gemini 3.5 Flash Lite</span>
+      {hasGeminiKey && (
+        <div className="bg-dark-850 border border-purple-500/30 rounded-xl p-3 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-purple-300 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" /> AI Style Assistant
+            </span>
+            <span className="text-[10px] text-gray-500">Gemini 3.5 Flash Lite</span>
+          </div>
+          {isEpisodesLoading && !activeShowHasCustomStyle ? (
+            <div className="bg-purple-950/40 border border-purple-500/30 rounded-lg p-2.5 flex items-center gap-2 text-xs text-purple-300 animate-pulse">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400 shrink-0" />
+              <span>Gemini is analyzing show tone to recommend initial styling...</span>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="e.g., Gritty thriller with bold gold font (or leave default)..."
+                title="Gemini analyzes the show's name, genres, synopsis, and any custom directions you provide."
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAiSuggest()}
+                className="flex-1 bg-dark-900 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+              />
+              <button
+                type="button"
+                onClick={handleAiSuggest}
+                disabled={isAiLoading}
+                className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+              >
+                {isAiLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5" />
+                )}
+                <span>Suggest</span>
+              </button>
+            </div>
+          )}
+          {aiReasoning && (
+            <p className="text-[11px] text-gray-400 italic mt-1 leading-relaxed">
+              {aiReasoning}
+            </p>
+          )}
         </div>
-        {isEpisodesLoading && !activeShowHasCustomStyle ? (
-          <div className="bg-purple-950/40 border border-purple-500/30 rounded-lg p-2.5 flex items-center gap-2 text-xs text-purple-300 animate-pulse">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400 shrink-0" />
-            <span>Gemini is analyzing show tone to recommend initial styling...</span>
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="e.g., Gritty thriller with bold gold font (or leave default)..."
-              title="Gemini analyzes the show's name, genres, synopsis, and any custom directions you provide."
-              value={aiPrompt}
-              onChange={(e) => setAiPrompt(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAiSuggest()}
-              className="flex-1 bg-dark-900 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
-            />
-            <button
-              type="button"
-              onClick={handleAiSuggest}
-              disabled={isAiLoading}
-              className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
-            >
-              {isAiLoading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="w-3.5 h-3.5" />
-              )}
-              <span>Suggest</span>
-            </button>
-          </div>
-        )}
-        {aiReasoning && (
-          <p className="text-[11px] text-gray-400 italic mt-1 leading-relaxed">
-            {aiReasoning}
-          </p>
-        )}
-      </div>
+      )}
 
       {/* Text Positioning */}
       <div>

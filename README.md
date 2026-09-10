@@ -1,118 +1,226 @@
 # PlexPosters 🎬🎨
 
-**PlexPosters** is an automated title card and artwork manager for Plex TV libraries. It bridges the gap between community-crafted MediUX artwork and immediate, local title card generation.
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg?logo=docker&logoColor=white)](https://www.docker.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-005571?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://reactjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=FFD62E)](https://vitejs.dev/)
+[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://python.org/)
+
+**PlexPosters** is an automated title card and artwork studio for your Plex TV libraries. It bridges the gap between community-crafted [MediUX](https://mediux.pro/) sets and immediate, automated local title card generation with real-time preview and optional Google Gemini AI styling.
+
+Whether you want consistent artwork for airing series before designers upload to MediUX, custom gradient cards inspired by *Star Trek: Strange New Worlds*, or one-click automated artwork sync the moment an episode downloads, PlexPosters handles it effortlessly.
 
 ---
 
-## 🌟 Key Features
+## ✨ Features
 
-1. **Live MediUX Auto-Matching (with Season Coverage Checking):**
-   * Scans your TV shows and finds sets on [MediUX](https://mediux.pro/).
-   * Checks your library's seasons to ensure the set actually covers what you have in Plex, preventing incomplete or abandoned sets.
-   * Periodically polls MediUX for newly uploaded episode cards on currently airing shows.
+### 1. 🖼️ MediUX Auto-Matching & Coverage Analysis
+- **Automatic Set Discovery:** Scans your TV library and matches available sets directly from [MediUX](https://mediux.pro/).
+- **Season Coverage Intelligence:** Calculates the exact season coverage of every set against what you actually have downloaded in Plex (e.g., *“3 of 4 seasons covered”*), preventing incomplete or abandoned sets.
+- **Preferred Artists:** Set preferred MediUX creator names (e.g., `rhodesydesign`, `polymath-art`) to automatically select your favorite designers across your library.
+- **One-Click Batch Apply:** Apply title cards for entire seasons or all available episodes in seconds directly through the Plex API.
 
-2. **Customizable Lightweight Card Generator:**
-   * Generates crisp 1080p title cards locally using official TMDb episode stills and typography.
-   * **Side-Stack Gradient Preset (Like *Star Trek: Strange New Worlds*):** Smooth horizontal gradient on the left, bold condensed typography, tracked sub-header (`SEASON FOUR ▲ EPISODE FIVE`), and vector divider icons (Starfleet Delta, dots, dashes).
-   * Ensures 100% legibility over any bright or busy backdrop.
+### 2. 🎨 Studio Title Card Generator Engine
+- **Crisp 1080p Title Cards:** Renders ultra-clean episode cards on high-resolution TMDb backdrops and stills.
+- **Side-Stack Gradient Preset:** Modern horizontal or vertical dark gradient overlay (left, right, top, bottom) ensuring 100% typography legibility across any bright or busy backdrop.
+- **Full Typography Control:**
+  - Bundled premium Google fonts (*Oswald, Montserrat, Cinzel, Bebas Neue, Playfair Display, Anton, Inter, and more*).
+  - Custom `.ttf` and `.otf` font uploader built right into the UI.
+  - Granular font sizing slider (40pt – 130pt) and customizable title/subtitle distance offset.
+  - Subheading formatting: season/episode markers, uppercase toggles, and individual color pickers.
+- **Interactive Live Preview Canvas:** Switch between episodes in real-time to preview typography, color palettes, and gradients against live backdrops before saving.
 
-3. **Per-Show Control Modes:**
-   * **`Auto (MediUX with Fallback)` (Default):** Applies MediUX cards when available, auto-generates interim cards for missing/newly aired episodes, and silently upgrades them once the designer uploads to MediUX.
-   * **`Generator Only (Preset)`:** Never checks MediUX. Permanently renders cards using your assigned preset and style.
-   * **`Ignored`:** Leaves the show untouched.
+### 3. 🤖 Optional Gemini AI Style Assistant
+- **Show-Aware Typography & Color Styling:** Powered by Google Gemini (`gemini-3.5-flash-lite`), the assistant analyzes your show’s title, genres, and synopsis to recommend matching fonts, colors, and layouts.
+- **Natural Language Prompts:** Give creative prompts like *"dark 1980s neon synthwave thriller with bold yellow font"* to let Gemini restyle cards on the fly.
+- **100% Optional & Zero-Clutter:** If `GEMINI_API_KEY` is not provided in your `.env`, all AI elements, buttons, and loaders are automatically hidden. Everything works completely offline/locally without an API key!
 
-4. **Modern Web UI Dashboard:**
-   * Interactive live-preview canvas: adjust fonts, colors, and gradients and see real-time updates on actual episode stills from your library.
-   * **✨ AI Style Assistant (Powered by Gemini):** Give natural language prompts (e.g. *"dark moody crime thriller with white serif font"*) to auto-tune fonts, palettes, and layouts.
-   * Direct "Apply to Plex" button to update episode artwork via Plex API with a single click.
+### 4. ⚡ Real-Time Plex WebSocket Listener
+- **Instant Event Sync:** Listens to Plex Media Server’s live WebSocket event stream (`/ws/notifications`).
+- **Instant Card Application:** When a new episode finishes scanning into your library, PlexPosters immediately generates and uploads the title card without waiting for a scheduled poll.
 
-5. **Real-Time Plex WebSocket Listener:**
-   * Automatically connects to Plex's notification stream to detect newly added episodes the moment they finish scanning.
-   * Instantly renders and applies title cards without waiting for a scheduled poll.
+### 5. 🌐 Cloudflare & Remote Access Ready
+- **Lightweight Poster Thumbnails:** High-resolution posters are automatically compressed and resized using PIL from ~2.5MB down to ~45KB–60KB (**96%+ bandwidth savings**), keeping grid views lightning fast even on cellular data.
+- **Edge Caching & ETag Support:** Served with `Cache-Control` and `ETag` (HTTP 304 Not Modified), utilizing zero tunnel bandwidth on repeat visits.
+
+### 6. 🔍 TMDb Search & Plex Fix-Match Studio
+- **Smart Title Normalization:** Cleans roman numerals, release years, and country codes to maximize match accuracy.
+- **Built-In TMDb Search:** Search and link alternative TMDb IDs directly inside the app if Plex mismatched a series.
+- **Push Fix-Match to Plex:** Push corrected TMDb GUIDs back to your Plex Media Server directly from the studio.
+- **Continuing vs. Ended Filter:** Filter your library by active airing shows (`Returning Series`) versus concluded shows (`Ended`).
+
+### 7. 🔒 Plex OAuth Authentication
+- **Secure by Default:** Protect your dashboard with official Plex OAuth sign-in (`ENABLE_AUTH=true`).
+- **Owner & Multi-User Whitelist:** Restricts access to the Plex Media Server owner by default, with an optional username/email whitelist (`ALLOWED_USERS`).
+- **Signed Session Cookies:** Secure HMAC-SHA256 browser session handling.
+
+### 8. 🛡️ Safe Testing Mode
+- **Dry-Run Protection:** `TEST_MODE=true` is enabled by default. You can experiment with fonts, test layouts, and generate previews without writing any changes to your real Plex library until you're ready.
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start with Docker (Recommended)
 
-### 1. Configure Environment
-Copy the template and fill in your details:
+The easiest way to run PlexPosters is using Docker and Docker Compose. A multi-stage `Dockerfile` packages the React frontend and FastAPI backend into a single container.
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/your-username/PlexPosters.git
+cd PlexPosters
+```
+
+### 2. Configure Environment Variables
+Copy the template file:
 ```bash
 cp .env.example .env
 ```
-Key settings:
-* `PLEX_URL`: Your Plex server address (e.g., `http://localhost:32400` or `http://192.168.x.x:32400`)
-* `PLEX_TOKEN`: Your Plex authentication token (X-Plex-Token)
-* `PLEX_TV_LIBRARY`: Name of your TV library section (e.g., `TV shows`)
-* `TMDB_API_KEY`: Free Developer API key from [themoviedb.org](https://www.themoviedb.org/)
-* `GEMINI_API_KEY`: *(Optional)* For AI typography and styling recommendations
-* `GEMINI_MODEL`: *(Optional)* Gemini model (defaults to `gemini-3.5-flash-lite` with generous 500 requests/day free quota)
-* `ENABLE_AUTH`: *(Optional)* Set to `true` to require Plex OAuth sign-in to access the UI and API
-* `TEST_MODE`: `true` (Default, keeps Plex safe while testing by preventing server uploads)
-
-### 2. Running with Docker (Recommended) 🐳
-
-PlexPosters includes a multi-stage Dockerfile that bundles the React frontend and FastAPI backend into a single container.
-
-1. **Start with Docker Compose:**
-   ```bash
-   docker compose up -d --build
-   ```
-
-2. **Access the Dashboard:**
-   Open your browser at `http://localhost:8080` (or `http://<your-host-ip>:8080`).
-
-#### Persistent Volumes:
-* `./data:/app/data`: Stores the SQLite database (`plexposters.db`), show settings, and custom presets.
-* `./cache:/app/cache`: Stores downloaded Google fonts, episode stills, and test outputs.
-* `./custom_fonts:/app/custom_fonts`: Stores custom `.ttf` and `.otf` fonts uploaded through the web UI.
-
----
-
-### 🔒 Authentication (Plex OAuth)
-
-To protect your PlexPosters dashboard when exposing it on your local network or reverse proxy, you can enable Plex OAuth authentication:
-
-In your `.env`:
+Open `.env` in your favorite editor and fill in your details (see the [Environment Variables Guide](#-environment-variables-guide) below):
 ```bash
-# Enable Plex sign-in
-ENABLE_AUTH=true
-
-# Optional: Restrict access to specific Plex usernames or emails (leave empty for Server Owner only)
-ALLOWED_USERS=your_plex_username,another_user@example.com
-
-# Optional: Fixed secret key for session cookies (persisted in SQLite if left empty)
-SECRET_KEY=
+nano .env
 ```
 
-When `ENABLE_AUTH=true`:
-* All unauthenticated visits present a **Sign in with Plex** OAuth dialog.
-* Server ownership is automatically verified: by default, only the **Plex Media Server owner** is granted access (or users in `ALLOWED_USERS`).
-* Secure signed HMAC-SHA256 session cookies keep you logged in across browser sessions.
-* All backend `/api/*` endpoints are protected against unauthorized access.
-
----
-
-### 3. Running Locally (Python + React)
+### 3. Launch the Container
 ```bash
-# Activate virtual environment
-source .venv/bin/activate
-
-# Start server
-python main.py
+docker compose up -d --build
 ```
-Open your browser to:
+
+### 4. Open the Web Dashboard
+Navigate to:
 ```
 http://localhost:8080
 ```
+*(or `http://<your-server-ip>:8080`)*
 
-### 3. Frontend Development (Optional)
-If you want to modify the React frontend with Vite Hot Module Reloading:
+---
+
+## ⚙️ Environment Variables Guide
+
+Here is the complete list of variables supported in `.env`:
+
+| Variable | Required | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `PLEX_URL` | **Yes** | `http://localhost:32400` | Address of your Plex Media Server (e.g. `http://192.168.1.50:32400`). |
+| `PLEX_TOKEN` | **Yes** | — | Your Plex authentication token (X-Plex-Token). |
+| `PLEX_TV_LIBRARY` | **Yes** | `TV Shows` | The exact name of your TV library section in Plex. |
+| `TMDB_API_KEY` | **Yes** | — | Free TMDb v3 API key or v4 read token for fetching episode stills and metadata. |
+| `GEMINI_API_KEY` | *No* | — | Google Gemini API key for AI style suggestions. *(If omitted, AI UI features are hidden).* |
+| `GEMINI_MODEL` | *No* | `gemini-3.5-flash-lite` | Gemini model to use. `gemini-3.5-flash-lite` offers a generous free tier (up to 500 requests/day). |
+| `MEDIUX_API_TOKEN` | *No* | — | Optional MediUX API token if you have beta/private account access. |
+| `FANART_API_KEY` | *No* | — | Optional Fanart.tv API key for additional fallback show logos. |
+| `TEST_MODE` | *No* | `true` | When `true`, prevents any modifications or uploads to your Plex server while testing. Set to `false` when ready for live sync. |
+| `ENABLE_AUTH` | *No* | `false` | Set to `true` to require users to sign in via Plex OAuth. |
+| `ALLOWED_USERS` | *No* | — | Comma-separated list of Plex usernames or emails allowed to sign in (defaults to Plex server owner only). |
+| `SECRET_KEY` | *No* | — | Secret key for signing session cookies (auto-generated in SQLite if left empty). |
+| `PORT` | *No* | `8080` | Port the web dashboard and API server listens on. |
+| `HOST` | *No* | `0.0.0.0` | Bind IP for the backend server. |
+| `POLL_INTERVAL_HOURS`| *No* | `12` | Background poll interval in hours to check for new episodes and MediUX updates. |
+
+---
+
+## 🔑 How to Get Your API Keys
+
+### 1. Plex Authentication Token (`PLEX_TOKEN`)
+1. Open Plex Web in your browser and play any media.
+2. Click the three dots (**...**) on any media item > **Get Info** > **View XML**.
+3. Look at the URL bar at the very end for `X-Plex-Token=...`.
+4. Copy this string into `PLEX_TOKEN`.
+> Refer to the official [Plex Support Guide on Finding Tokens](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/) for full details.
+
+### 2. The Movie Database Key (`TMDB_API_KEY`)
+1. Create a free account at [TheMovieDB.org](https://www.themoviedb.org/).
+2. Go to **Settings** > [API](https://www.themoviedb.org/settings/api).
+3. Request an API key (choose "Developer").
+4. Copy the **API Key (v3 auth)** into `TMDB_API_KEY`.
+
+### 3. Google Gemini Key (`GEMINI_API_KEY`) *(Optional)*
+1. Go to [Google AI Studio](https://aistudio.google.com/).
+2. Click **Get API key** and create a free key in a Google Cloud project.
+3. Paste the key into `GEMINI_API_KEY`.
+*(Note: If left blank, PlexPosters runs with all manual styling features enabled and AI components cleanly hidden).*
+
+---
+
+## 🛠️ Manual Installation (Without Docker)
+
+If you prefer to run PlexPosters natively on your host machine:
+
+### Prerequisites
+- **Python 3.10+**
+- **Node.js 18+** & **npm**
+
+### 1. Clone & Set Up Backend
+```bash
+git clone https://github.com/your-username/PlexPosters.git
+cd PlexPosters
+
+# Create and activate Python virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install Python dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 2. Configure Environment
+```bash
+cp .env.example .env
+nano .env  # Add your Plex and TMDb credentials
+```
+
+### 3. Build the Frontend
 ```bash
 cd frontend
-npm run dev
-```
-Visit `http://localhost:5173` (API requests are automatically proxied to the FastAPI backend).
-To rebuild the production bundle served by `python main.py`:
-```bash
+npm install
 npm run build
+cd ..
 ```
+
+### 4. Start the Application
+```bash
+python main.py
+```
+Open your browser at `http://localhost:8080`.
+
+---
+
+## 💻 Frontend Development (HMR)
+
+If you are developing or modifying the React UI:
+1. Start the backend:
+   ```bash
+   python main.py
+   ```
+2. In a separate terminal, start the Vite dev server with Hot Module Reloading:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+3. Open `http://localhost:5173`. API requests will automatically proxy to the backend on `http://localhost:8080`.
+
+---
+
+## 📂 Persistent Data & Storage
+
+When using Docker, the following folders are mapped as persistent volumes:
+- `./data`: SQLite database (`plexposters.db`), storing show states, style configurations, and user preferences.
+- `./cache`: Downloaded Google fonts, cached episode stills, thumbnail posters, and temporary preview renders.
+- `./custom_fonts`: Any custom `.ttf` or `.otf` fonts uploaded through the web UI studio.
+
+---
+
+## 🤝 Contributing
+
+Contributions, bug reports, and feature requests are welcome!
+1. Fork the repository.
+2. Create your feature branch (`git checkout -b feature/amazing-feature`).
+3. Commit your changes (`git commit -m 'Add amazing feature'`).
+4. Push to the branch (`git push origin feature/amazing-feature`).
+5. Open a Pull Request.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

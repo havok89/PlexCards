@@ -22,6 +22,7 @@ interface SettingsModalProps {
   testMode: boolean;
   tvLibrary: string;
   listenerConnected?: boolean;
+  hasGeminiKey?: boolean;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -29,7 +30,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onShowsUpdated,
   testMode,
   tvLibrary,
-  listenerConnected = false
+  listenerConnected = false,
+  hasGeminiKey = true
 }) => {
   const { showToast } = useToast();
   const [autoGemini, setAutoGemini] = useState<boolean>(true);
@@ -166,48 +168,67 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           ) : (
             <>
               {/* Section 1: AI Automation */}
-              <div className="bg-dark-850 border border-gray-800 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-purple-400" />
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-purple-300">
-                      Gemini AI Styling
-                    </h3>
-                  </div>
-                  <span className="text-[10px] text-gray-500">Gemini 3.5 Flash Lite</span>
-                </div>
-
-                <div className="flex items-start justify-between gap-4 pt-1">
-                  <div>
-                    <span className="text-xs font-semibold text-white block">
-                      Auto-suggest styles for unconfigured shows
-                    </span>
-                    <p className="text-[11px] text-gray-400 leading-relaxed mt-0.5">
-                      When opening a show that hasn't had a style preset saved yet, automatically ask Gemini
-                      to recommend typography, colors, and layout based on TMDb genres & overview.
-                    </p>
+              {hasGeminiKey !== false ? (
+                <div className="bg-dark-850 border border-gray-800 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-purple-400" />
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-purple-300">
+                        Gemini AI Styling
+                      </h3>
+                    </div>
+                    <span className="text-[10px] text-gray-500">Gemini 3.5 Flash Lite</span>
                   </div>
 
-                  {/* Toggle Switch */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = !autoGemini;
-                      setAutoGemini(next);
-                      handleSaveSetting('auto_gemini_suggestion', next ? 'true' : 'false');
-                    }}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      autoGemini ? 'bg-purple-600' : 'bg-gray-700'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                        autoGemini ? 'translate-x-5' : 'translate-x-0'
+                  <div className="flex items-start justify-between gap-4 pt-1">
+                    <div>
+                      <span className="text-xs font-semibold text-white block">
+                        Auto-suggest styles for unconfigured shows
+                      </span>
+                      <p className="text-[11px] text-gray-400 leading-relaxed mt-0.5">
+                        When opening a show that hasn't had a style preset saved yet, automatically ask Gemini
+                        to recommend typography, colors, and layout based on TMDb genres & overview.
+                      </p>
+                    </div>
+
+                    {/* Toggle Switch */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !autoGemini;
+                        setAutoGemini(next);
+                        handleSaveSetting('auto_gemini_suggestion', next ? 'true' : 'false');
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        autoGemini ? 'bg-purple-600' : 'bg-gray-700'
                       }`}
-                    />
-                  </button>
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          autoGemini ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-dark-850/60 border border-gray-800 rounded-xl p-3 sm:p-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Sparkles className="w-4 h-4 text-gray-600 shrink-0" />
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                        Gemini AI Styling
+                      </h3>
+                      <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                        Disabled. Set <code className="text-gray-400 font-mono">GEMINI_API_KEY</code> in <code className="text-gray-400 font-mono">.env</code> to enable AI typography & color styling.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700 shrink-0">
+                    Not Configured
+                  </span>
+                </div>
+              )}
 
               {/* Section 2: Default Mode for New Shows */}
               <div className="bg-dark-850 border border-gray-800 rounded-xl p-4 space-y-3">

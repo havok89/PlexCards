@@ -26,6 +26,7 @@ const normalizeSeparator = (icon?: string): string => {
 interface ShowStudioModalProps {
   show: Show;
   testMode: boolean;
+  hasGeminiKey?: boolean;
   onClose: () => void;
   onShowUpdated: () => void;
 }
@@ -33,6 +34,7 @@ interface ShowStudioModalProps {
 export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   show,
   testMode,
+  hasGeminiKey: initialHasGeminiKey = true,
   onClose,
   onShowUpdated
 }) => {
@@ -61,6 +63,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   const [updateScope, setUpdateScope] = useState<'all' | 'missing'>('all');
   const [isForceLive, setIsForceLive] = useState<boolean>(false);
   const [previewTab, setPreviewTab] = useState<'mediux' | 'generator'>('mediux');
+  const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(initialHasGeminiKey);
 
   // TMDb search and matching state
   const [isTmdbModalOpen, setIsTmdbModalOpen] = useState<boolean>(false);
@@ -118,6 +121,10 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
       setPreferredCreators(data.preferred_creators || []);
       setIsEpisodesLoading(false);
       setIsSetsLoading(false);
+
+      if (data.has_gemini_key !== undefined) {
+        setHasGeminiKey(Boolean(data.has_gemini_key));
+      }
 
       if (data.ai_error) {
         showToast({
@@ -649,6 +656,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
             isPreviewLoading={isPreviewLoading}
             previewUrl={previewUrl}
             currentEp={currentEp}
+            hasGeminiKey={hasGeminiKey}
           />
 
           {/* Right Column: Source Modes, MediUX Sets & Generator Styling */}
@@ -683,6 +691,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
               handleFontUpload={handleFontUpload}
               handleSaveStyle={handleSaveStyle}
               isSavedJustNow={isSavedJustNow}
+              hasGeminiKey={hasGeminiKey}
             />
           </div>
         </div>
