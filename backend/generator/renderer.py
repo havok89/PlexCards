@@ -136,6 +136,61 @@ class TitleCardRenderer:
         fonts.sort(key=lambda x: x["name"])
         return fonts
 
+    @staticmethod
+    def get_subheading_parts(season_num: int, episode_num: int, fmt_key: str = "season_num_ep_num") -> Tuple[str, str, bool]:
+        """
+        Returns (season_part, episode_part, show_separator).
+        If season_part or episode_part is empty, show_separator is False.
+        """
+        s_word = NUM_WORDS.get(season_num, str(season_num))
+        e_word = NUM_WORDS.get(episode_num, str(episode_num))
+        s_num = str(season_num)
+        e_num = str(episode_num)
+        s_pad = f"{season_num:02d}"
+        e_pad = f"{episode_num:02d}"
+
+        fmt = (fmt_key or "season_num_ep_num").strip().lower()
+
+        if fmt in ("season_word_ep_word", "season {season_word} {icon} episode {episode_word}"):
+            return f"SEASON {s_word}", f"EPISODE {e_word}", True
+        elif fmt == "season_num_ep_num":
+            return f"SEASON {s_num}", f"EPISODE {e_num}", True
+        elif fmt in ("s_pad_e_pad", "s00_e00"):
+            return f"S{s_pad}", f"E{e_pad}", True
+        elif fmt in ("compact_pad", "s00e00"):
+            return f"S{s_pad}E{e_pad}", "", False
+        elif fmt in ("ep_num", "episode_num"):
+            return "", f"EPISODE {e_num}", False
+        elif fmt in ("ep_word", "episode_word"):
+            return "", f"EPISODE {e_word}", False
+        elif fmt in ("e_pad", "e00"):
+            return "", f"E{e_pad}", False
+        elif fmt in ("season_num",):
+            return f"SEASON {s_num}", "", False
+        elif fmt in ("season_word",):
+            return f"SEASON {s_word}", "", False
+        elif fmt in ("s_pad", "s00"):
+            return f"S{s_pad}", "", False
+        else:
+            if "{" in fmt:
+                try:
+                    formatted = fmt.format(
+                        season=s_num,
+                        season_pad=s_pad,
+                        season_word=s_word,
+                        episode=e_num,
+                        episode_pad=e_pad,
+                        episode_word=e_word,
+                        icon="{icon}"
+                    )
+                    if "{icon}" in formatted:
+                        parts = formatted.split("{icon}", 1)
+                        return parts[0].strip(), parts[1].strip(), True
+                    return formatted.strip(), "", False
+                except Exception:
+                    pass
+            return f"SEASON {s_num}", f"EPISODE {e_num}", True
+
     def render(
         self,
         base_image_path: Path,
@@ -162,7 +217,8 @@ class TitleCardRenderer:
         grad_width_pct = style.get("gradient_width_pct", 50 if "bottom" in text_pos else 48)
         grad_opacity_pct = style.get("gradient_opacity_pct", 90)
         show_subheading = bool(style.get("show_subheading", 1))
-        sub_icon = style.get("subheading_icon", "dot") # 'dot', 'delta', 'dash', 'none'
+        sub_icon = style.get("subheading_icon", "dot")
+        sub_fmt = style.get("subheading_format", "season_num_ep_num")
         
         # Load and resize base still to standard 1080p
         base_img = Image.open(base_image_path).convert("RGBA")
@@ -183,11 +239,6 @@ class TitleCardRenderer:
             title_font = ImageFont.load_default()
 
         # 3. Text Preparation
-        s_word = NUM_WORDS.get(season_num, str(season_num))
-        e_word = NUM_WORDS.get(episode_num, str(episode_num))
-        season_part = f"SEASON {s_word}"
-        episode_part = f"EPISODE {e_word}"
-        
         # Layout metrics based on text_position
         margin_side = 110
         if "center_bottom" in text_pos:
@@ -225,6 +276,8 @@ class TitleCardRenderer:
 
         # 4. Render Subheading
         if show_subheading:
+            season_part, episode_part, has_sep = self.get_subheading_parts(season_num, episode_num, sub_fmt)
+
             # Resolve separator character
             raw_icon = str(sub_icon).strip() if sub_icon else ""
             if raw_icon in ("dot", "bullet", "delta"):
@@ -236,43 +289,61 @@ class TitleCardRenderer:
             else:
                 sep_char = raw_icon
 
-            # Measure subheading components
-            s_bbox = draw.textbbox((0, 0), season_part, font=sub_font)
-            s_w = s_bbox[2] - s_bbox[0]
-            e_bbox = draw.textbbox((0, 0), episode_part, font=sub_font)
-            e_w = e_bbox[2] - e_bbox[0]
-            
+            draw_sep = has_sep and bool(sep_char)
+
             gap = 16
-            if sep_char:
+            s_w = 0
+            if season_part:
+                s_bbox = draw.textbbox((0, 0), season_part, font=sub_font)
+                s_w = s_bbox[2] - s_bbox[0]
+
+            e_w = 0
+            if episode_part:
+                e_bbox = draw.textbbox((0, 0), episode_part, font=sub_font)
+                e_w = e_bbox[2] - e_bbox[0]
+
+            sep_w = 0
+            if draw_sep:
                 sep_bbox = draw.textbbox((0, 0), sep_char, font=sub_font)
                 sep_w = sep_bbox[2] - sep_bbox[0]
-                total_sub_w = s_w + gap + sep_w + gap + e_w
+
+            if season_part and episode_part:
+                total_sub_w = s_w + gap + (sep_w + gap if draw_sep else 0) + e_w
+            elif season_part:
+                total_sub_w = s_w
+            elif episode_part:
+                total_sub_w = e_w
             else:
-                sep_w = 0
-                total_sub_w = s_w + gap + e_w
-            
-            if text_pos == "center_bottom":
-                sub_start_x = (1920 - total_sub_w) // 2
-            elif "right" in text_pos:
-                sub_start_x = 1920 - margin_side - total_sub_w
-            else:
-                sub_start_x = margin_side
+                total_sub_w = 0
 
-            # Draw Season part
-            draw.text((sub_start_x + 2, sub_y + 2), season_part, font=sub_font, fill=(0, 0, 0, 200))
-            draw.text((sub_start_x, sub_y), season_part, font=sub_font, fill=sub_color)
+            if total_sub_w > 0:
+                if text_pos == "center_bottom":
+                    sub_start_x = (1920 - total_sub_w) // 2
+                elif "right" in text_pos:
+                    sub_start_x = 1920 - margin_side - total_sub_w
+                else:
+                    sub_start_x = margin_side
 
-            curr_x = sub_start_x + s_w + gap
+                curr_x = sub_start_x
 
-            # Draw separator character if present
-            if sep_char:
-                draw.text((curr_x + 2, sub_y + 2), sep_char, font=sub_font, fill=(0, 0, 0, 200))
-                draw.text((curr_x, sub_y), sep_char, font=sub_font, fill=sub_color)
-                curr_x += sep_w + gap
+                # Draw Season part if present
+                if season_part:
+                    draw.text((curr_x + 2, sub_y + 2), season_part, font=sub_font, fill=(0, 0, 0, 200))
+                    draw.text((curr_x, sub_y), season_part, font=sub_font, fill=sub_color)
+                    curr_x += s_w
 
-            # Draw Episode part
-            draw.text((curr_x + 2, sub_y + 2), episode_part, font=sub_font, fill=(0, 0, 0, 200))
-            draw.text((curr_x, sub_y), episode_part, font=sub_font, fill=sub_color)
+                # Draw separator if both parts present
+                if season_part and episode_part:
+                    curr_x += gap
+                    if draw_sep:
+                        draw.text((curr_x + 2, sub_y + 2), sep_char, font=sub_font, fill=(0, 0, 0, 200))
+                        draw.text((curr_x, sub_y), sep_char, font=sub_font, fill=sub_color)
+                        curr_x += sep_w + gap
+
+                # Draw Episode part if present
+                if episode_part:
+                    draw.text((curr_x + 2, sub_y + 2), episode_part, font=sub_font, fill=(0, 0, 0, 200))
+                    draw.text((curr_x, sub_y), episode_part, font=sub_font, fill=sub_color)
 
         # 5. Render Title Lines
         for i, line in enumerate(lines):

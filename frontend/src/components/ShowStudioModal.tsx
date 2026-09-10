@@ -38,6 +38,32 @@ const normalizeSeparator = (sep?: string): string => {
   return sep;
 };
 
+const getSubheadingPreview = (fmt?: string, icon?: string): string => {
+  const sep = icon === 'none' ? '' : (icon || '•');
+  switch (fmt) {
+    case 'season_word_ep_word':
+      return `SEASON ONE ${sep ? sep + ' ' : ''}EPISODE FIVE`.trim();
+    case 'season_num_ep_num':
+      return `SEASON 1 ${sep ? sep + ' ' : ''}EPISODE 5`.trim();
+    case 's_pad_e_pad':
+      return `S01 ${sep ? sep + ' ' : ''}E05`.trim();
+    case 'compact_pad':
+      return 'S01E05';
+    case 'ep_num':
+      return 'EPISODE 5';
+    case 'ep_word':
+      return 'EPISODE FIVE';
+    case 'e_pad':
+      return 'E05';
+    case 'season_num':
+      return 'SEASON 1';
+    case 'season_word':
+      return 'SEASON ONE';
+    default:
+      return `SEASON 1 ${sep ? sep + ' ' : ''}EPISODE 5`.trim();
+  }
+};
+
 interface ShowStudioModalProps {
   show: Show;
   testMode: boolean;
@@ -103,6 +129,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     gradient_width_pct: show.gradient_width_pct || 48,
     gradient_opacity_pct: show.gradient_opacity_pct || 88,
     show_subheading: show.show_subheading !== undefined ? show.show_subheading : 1,
+    subheading_format: show.subheading_format || 'season_num_ep_num',
     subheading_icon: normalizeSeparator(show.subheading_icon)
   });
 
@@ -150,6 +177,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           gradient_width_pct: data.show.gradient_width_pct || 48,
           gradient_opacity_pct: data.show.gradient_opacity_pct || 88,
           show_subheading: data.show.show_subheading !== undefined ? data.show.show_subheading : 1,
+          subheading_format: data.show.subheading_format || 'season_num_ep_num',
           subheading_icon: normalizeSeparator(data.show.subheading_icon)
         });
         if (data.show.ai_prompt) {
@@ -200,7 +228,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     if (!ep) return;
 
     // Check frontend in-memory cache first for instantaneous rendering
-    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}`;
+    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.show_subheading}_${styleConfig.subheading_format}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}`;
     if (previewBlobCache.has(cacheKey)) {
       setPreviewUrl(previewBlobCache.get(cacheKey)!);
       setIsPreviewLoading(false);
@@ -1245,114 +1273,221 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
                 </select>
               </div>
 
-              {/* Colors */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] text-gray-400 block mb-1">Title Color</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={styleConfig.font_color}
-                      onChange={(e) =>
-                        setStyleConfig((prev) => ({ ...prev, font_color: e.target.value }))
-                      }
-                      className="w-8 h-8 rounded border border-gray-700 bg-transparent cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={styleConfig.font_color}
-                      onChange={(e) =>
-                        setStyleConfig((prev) => ({ ...prev, font_color: e.target.value }))
-                      }
-                      className="w-full bg-dark-800 border border-gray-700 text-xs rounded px-2 py-1.5 text-white font-mono uppercase"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[11px] text-gray-400 block mb-1">Subheading Color</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={styleConfig.subheading_color}
-                      onChange={(e) =>
-                        setStyleConfig((prev) => ({
-                          ...prev,
-                          subheading_color: e.target.value
-                        }))
-                      }
-                      className="w-8 h-8 rounded border border-gray-700 bg-transparent cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={styleConfig.subheading_color}
-                      onChange={(e) =>
-                        setStyleConfig((prev) => ({
-                          ...prev,
-                          subheading_color: e.target.value
-                        }))
-                      }
-                      className="w-full bg-dark-800 border border-gray-700 text-xs rounded px-2 py-1.5 text-white font-mono uppercase"
-                    />
-                  </div>
+              {/* Title Font Color */}
+              <div>
+                <label className="text-[11px] text-gray-400 block mb-1">Title Font Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={styleConfig.font_color}
+                    onChange={(e) =>
+                      setStyleConfig((prev) => ({ ...prev, font_color: e.target.value }))
+                    }
+                    className="w-8 h-8 rounded border border-gray-700 bg-transparent cursor-pointer"
+                  />
+                  <input
+                    type="text"
+                    value={styleConfig.font_color}
+                    onChange={(e) =>
+                      setStyleConfig((prev) => ({ ...prev, font_color: e.target.value }))
+                    }
+                    className="w-full bg-dark-800 border border-gray-700 text-xs rounded px-2 py-1.5 text-white font-mono uppercase"
+                  />
                 </div>
               </div>
 
-              {/* Subheading Separator */}
-              <div>
-                <label className="text-[11px] text-gray-400 block mb-1.5">
-                  Subheading Separator
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    maxLength={4}
-                    value={styleConfig.subheading_icon}
-                    onChange={(e) =>
+              {/* Subheading Options Card */}
+              <div className="bg-dark-850/60 border border-gray-800 rounded-xl p-3 space-y-3">
+                {/* Header + Visibility Toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-semibold text-white block">Subheading</label>
+                    <span className="text-[10px] text-gray-400">Season & episode label above title</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
                       setStyleConfig((prev) => ({
                         ...prev,
-                        subheading_icon: e.target.value
+                        show_subheading: prev.show_subheading ? 0 : 1
                       }))
                     }
-                    placeholder="None"
-                    className="w-16 bg-dark-800 border border-gray-700 text-xs rounded-lg px-2 py-2 text-white font-mono text-center focus:outline-none focus:border-brand-500"
-                    title="Type any custom separator character"
-                  />
-                  <div className="flex flex-wrap items-center gap-1.5 flex-1">
-                    {[
-                      { label: '•', val: '•' },
-                      { label: ':', val: ':' },
-                      { label: '-', val: '-' },
-                      { label: '=', val: '=' },
-                      { label: '|', val: '|' },
-                      { label: '.', val: '.' },
-                      { label: '/', val: '/' },
-                      { label: '~', val: '~' },
-                      { label: 'None', val: '' }
-                    ].map((item) => {
-                      const isSelected = styleConfig.subheading_icon === item.val;
-                      return (
-                        <button
-                          key={item.label}
-                          type="button"
-                          onClick={() =>
+                    className={`text-xs px-2.5 py-1 rounded-full border font-medium transition flex items-center gap-1.5 ${
+                      styleConfig.show_subheading
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                        : 'bg-dark-800 text-gray-400 border-gray-700 hover:text-white'
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${styleConfig.show_subheading ? 'bg-emerald-400' : 'bg-gray-500'}`} />
+                    <span>{styleConfig.show_subheading ? 'Visible' : 'Hidden'}</span>
+                  </button>
+                </div>
+
+                {styleConfig.show_subheading ? (
+                  <>
+                    {/* Live Subheading Preview Badge */}
+                    <div className="bg-dark-950/80 border border-gray-800 rounded-lg py-1.5 px-3 flex items-center justify-between text-xs">
+                      <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Preview</span>
+                      <span
+                        className="font-mono font-bold tracking-wide"
+                        style={{ color: styleConfig.subheading_color }}
+                      >
+                        {getSubheadingPreview(styleConfig.subheading_format, styleConfig.subheading_icon)}
+                      </span>
+                    </div>
+
+                    {/* Subheading Format Selector */}
+                    <div>
+                      <label className="text-[11px] text-gray-400 block mb-1">
+                        Format Style
+                      </label>
+                      <select
+                        value={styleConfig.subheading_format}
+                        onChange={(e) =>
+                          setStyleConfig((prev) => ({
+                            ...prev,
+                            subheading_format: e.target.value
+                          }))
+                        }
+                        className="w-full bg-dark-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-brand-500 font-medium"
+                      >
+                        <option value="season_num_ep_num">Season 1 • Episode 1 (Standard)</option>
+                        <option value="s_pad_e_pad">S01 • E01 (Short Code)</option>
+                        <option value="season_word_ep_word">Season One • Episode One (Words)</option>
+                        <option value="compact_pad">S01E01 (Compact)</option>
+                        <option value="ep_num">Episode 1 (Episode Only - No Season)</option>
+                        <option value="ep_word">Episode One (Episode Only - No Season)</option>
+                        <option value="e_pad">E01 (Episode Code Only - No Season)</option>
+                        <option value="season_num">Season 1 (Season Only)</option>
+                      </select>
+
+                      {/* Quick Format Chips */}
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {[
+                          { id: 'season_num_ep_num', label: 'Season 1 • Ep 1' },
+                          { id: 's_pad_e_pad', label: 'S01 • E01' },
+                          { id: 'ep_num', label: 'Episode 1' },
+                          { id: 'e_pad', label: 'E01' },
+                          { id: 'season_word_ep_word', label: 'Words' },
+                          { id: 'compact_pad', label: 'S01E01' }
+                        ].map((chip) => {
+                          const isSelected = styleConfig.subheading_format === chip.id;
+                          return (
+                            <button
+                              key={chip.id}
+                              type="button"
+                              onClick={() =>
+                                setStyleConfig((prev) => ({
+                                  ...prev,
+                                  subheading_format: chip.id
+                                }))
+                              }
+                              className={`text-[10px] px-2 py-0.5 rounded border transition font-medium ${
+                                isSelected
+                                  ? 'bg-brand-500/20 text-brand-400 border-brand-500/40'
+                                  : 'bg-dark-800 text-gray-400 border-gray-700 hover:text-white hover:bg-dark-750'
+                              }`}
+                            >
+                              {chip.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Separator - only show when both season and episode are visible */}
+                    {!['ep_num', 'ep_word', 'e_pad', 'season_num', 'season_word', 's_pad', 'compact_pad'].includes(styleConfig.subheading_format) && (
+                      <div>
+                        <label className="text-[11px] text-gray-400 block mb-1.5">
+                          Separator Character
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            maxLength={4}
+                            value={styleConfig.subheading_icon}
+                            onChange={(e) =>
+                              setStyleConfig((prev) => ({
+                                ...prev,
+                                subheading_icon: e.target.value
+                              }))
+                            }
+                            placeholder="None"
+                            className="w-14 bg-dark-800 border border-gray-700 text-xs rounded-lg px-2 py-1.5 text-white font-mono text-center focus:outline-none focus:border-brand-500"
+                            title="Type any custom separator character"
+                          />
+                          <div className="flex flex-wrap items-center gap-1 flex-1">
+                            {[
+                              { label: '•', val: '•' },
+                              { label: ':', val: ':' },
+                              { label: '-', val: '-' },
+                              { label: '=', val: '=' },
+                              { label: '|', val: '|' },
+                              { label: '.', val: '.' },
+                              { label: '/', val: '/' },
+                              { label: '~', val: '~' },
+                              { label: 'None', val: '' }
+                            ].map((item) => {
+                              const isSelected = styleConfig.subheading_icon === item.val;
+                              return (
+                                <button
+                                  key={item.label}
+                                  type="button"
+                                  onClick={() =>
+                                    setStyleConfig((prev) => ({
+                                      ...prev,
+                                      subheading_icon: item.val
+                                    }))
+                                  }
+                                  className={`px-2 py-0.5 text-xs rounded border transition font-medium ${
+                                    isSelected
+                                      ? 'bg-brand-600 border-brand-500 text-white shadow-sm'
+                                      : 'bg-dark-800 border-gray-700 text-gray-400 hover:text-white hover:bg-dark-750'
+                                  }`}
+                                >
+                                  {item.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Subheading Color */}
+                    <div>
+                      <label className="text-[11px] text-gray-400 block mb-1">Subheading Color</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={styleConfig.subheading_color}
+                          onChange={(e) =>
                             setStyleConfig((prev) => ({
                               ...prev,
-                              subheading_icon: item.val
+                              subheading_color: e.target.value
                             }))
                           }
-                          className={`px-2.5 py-1 text-xs rounded border transition font-medium ${
-                            isSelected
-                              ? 'bg-brand-600 border-brand-500 text-white shadow-sm'
-                              : 'bg-dark-800 border-gray-700 text-gray-400 hover:text-white hover:bg-dark-750'
-                          }`}
-                        >
-                          {item.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                          className="w-8 h-8 rounded border border-gray-700 bg-transparent cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          value={styleConfig.subheading_color}
+                          onChange={(e) =>
+                            setStyleConfig((prev) => ({
+                              ...prev,
+                              subheading_color: e.target.value
+                            }))
+                          }
+                          className="w-full bg-dark-800 border border-gray-700 text-xs rounded px-2 py-1.5 text-white font-mono uppercase"
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-[11px] text-gray-500 italic">
+                    Subheading is hidden. Cards will be rendered with episode title only.
+                  </p>
+                )}
               </div>
 
               {/* Gradient Sliders */}

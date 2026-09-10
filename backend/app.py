@@ -420,7 +420,8 @@ def generate_preview(rating_key: str, payload: dict = Body(...)):
         "icon": style.get("subheading_icon"),
         "gw": style.get("gradient_width_pct"),
         "go": style.get("gradient_opacity_pct"),
-        "sub": style.get("show_subheading")
+        "sub": style.get("show_subheading"),
+        "sub_fmt": style.get("subheading_format")
     }, sort_keys=True).encode()).hexdigest()
 
     cached_preview = PREVIEWS_DIR / f"{cache_key}.jpg"
