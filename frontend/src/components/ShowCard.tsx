@@ -51,8 +51,14 @@ export const ShowCard: React.FC<ShowCardProps> = ({ show, onClick }) => {
           <h3 className="font-semibold text-sm text-white truncate group-hover:text-brand-500 transition">
             {show.title}
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {show.year || `TMDb: ${show.tmdb_id}`}
+          <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5 truncate">
+            {show.year && <span>{show.year}</span>}
+            {show.year && <span>•</span>}
+            {show.tmdb_id ? (
+              <span>TMDb: {show.tmdb_id}</span>
+            ) : (
+              <span className="text-amber-400 font-medium">TMDb: Unmatched</span>
+            )}
           </p>
         </div>
 

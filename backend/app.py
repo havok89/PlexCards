@@ -2,6 +2,7 @@ import logging
 import base64
 import io
 from pathlib import Path
+from typing import Optional
 from fastapi import FastAPI, HTTPException, Body, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
@@ -9,7 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.config import BASE_DIR, HOST, PORT, CUSTOM_FONTS_DIR
 from backend.db import (
     init_db, get_all_shows, get_show, update_show_mode, update_show_style,
-    get_setting, set_setting, get_all_settings, bulk_update_show_modes
+    get_setting, set_setting, get_all_settings, bulk_update_show_modes,
+    update_show_tmdb_id
 )
 from backend.sync_manager import SyncManager
 from backend.ai_styler import AIStyler
@@ -17,6 +19,7 @@ from backend.tmdb_client import TMDbClient
 from backend.mediux_client import MediuxClient
 from backend.generator.renderer import TitleCardRenderer
 from backend.scheduler import start_scheduler
+from backend.plex_listener import plex_listener
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -42,7 +45,13 @@ renderer = TitleCardRenderer()
 @app.on_event("startup")
 def on_startup():
     start_scheduler()
-    logger.info("PlexPosters API started.")
+    plex_listener.start()
+    logger.info("PlexPosters API and Live AlertListener started.")
+
+@app.on_event("shutdown")
+def on_shutdown():
+    plex_listener.stop()
+    logger.info("PlexPosters API and Live AlertListener stopped.")
 
 # ----------------------------------------------------
 # API ENDPOINTS
@@ -50,12 +59,21 @@ def on_startup():
 
 @app.get("/api/config")
 def get_config_info():
-    """Return app settings including TEST_MODE status."""
+    """Return app settings including TEST_MODE and listener status."""
     from backend.config import TEST_MODE, PLEX_TV_LIBRARY, POLL_INTERVAL_HOURS
     return {
         "test_mode": TEST_MODE,
         "tv_library": PLEX_TV_LIBRARY,
-        "poll_interval_hours": POLL_INTERVAL_HOURS
+        "poll_interval_hours": POLL_INTERVAL_HOURS,
+        "listener_connected": plex_listener.is_connected
+    }
+
+@app.get("/api/listener/status")
+def get_listener_status():
+    """Return the current status of the real-time Plex WebSocket alert listener."""
+    return {
+        "connected": plex_listener.is_connected,
+        "tv_section_id": plex_listener._tv_section_id
     }
 
 @app.get("/api/fonts")
@@ -180,6 +198,63 @@ def set_show_mode(rating_key: str, payload: dict = Body(...)):
     mediux_set_url = payload.get("mediux_set_url")
     update_show_mode(rating_key, mode, mediux_set_url)
     return {"status": "success", "mode": mode, "mediux_set_url": mediux_set_url}
+
+@app.get("/api/tmdb/search")
+def search_tmdb(query: str, year: Optional[int] = None):
+    """Search TMDb for TV shows matching the query."""
+    if not query:
+        raise HTTPException(status_code=400, detail="Query parameter is required")
+    results = tmdb.search_shows(query, year=year)
+    return {"results": results}
+
+@app.post("/api/shows/{rating_key}/tmdb-match")
+def match_show_tmdb(rating_key: str, payload: dict = Body(...)):
+    """Link a show to a TMDb ID and backfill poster/backdrop from TMDb if available."""
+    tmdb_id = payload.get("tmdb_id")
+    if not tmdb_id:
+        raise HTTPException(status_code=400, detail="tmdb_id is required")
+
+    show = get_show(rating_key)
+    if not show:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    try:
+        tmdb_id = int(tmdb_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid tmdb_id format")
+
+    details = tmdb.get_show_details(tmdb_id)
+    poster_url = None
+    backdrop_url = None
+    if details:
+        poster_url = details.get("poster_url")
+        backdrop_url = details.get("backdrop_url")
+
+    update_show_tmdb_id(rating_key, tmdb_id, poster_url=poster_url, backdrop_url=backdrop_url)
+    updated_show = get_show(rating_key)
+    return {"status": "success", "show": updated_show, "tmdb_info": details}
+
+@app.post("/api/shows/{rating_key}/plex-fix-match")
+def fix_match_in_plex(rating_key: str, payload: dict = Body(default={})):
+    """Instruct Plex server to execute fixMatch on the show."""
+    show = get_show(rating_key)
+    if not show:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    title = payload.get("title") or show.get("title")
+    year = payload.get("year") or show.get("year")
+
+    try:
+        res = sync_mgr.plex.fix_match_show(rating_key, title=title, year=year)
+        if not res.get("success"):
+            raise HTTPException(status_code=400, detail=res.get("message", "Fix match failed"))
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error triggering Plex fixMatch for {rating_key}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/shows/{rating_key}/style")
 def save_show_style(rating_key: str, payload: dict = Body(...)):

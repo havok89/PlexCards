@@ -176,5 +176,59 @@ export const api = {
       body: JSON.stringify({ mode })
     });
     return res.json();
+  },
+
+  async searchTmdb(query: string, year?: number): Promise<{ results: Array<{
+    tmdb_id: number;
+    name: string;
+    year?: number | null;
+    overview?: string | null;
+    poster_url?: string | null;
+    backdrop_url?: string | null;
+  }> }> {
+    const params = new URLSearchParams({ query });
+    if (year) params.append('year', year.toString());
+    const res = await fetch(`/api/tmdb/search?${params.toString()}`);
+    if (!res.ok) {
+      throw new Error(`TMDb search failed: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async setTmdbMatch(ratingKey: string, tmdbId: number): Promise<{
+    status: string;
+    show: Show;
+    tmdb_info?: any;
+  }> {
+    const res = await fetch(`/api/shows/${ratingKey}/tmdb-match`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tmdb_id: tmdbId })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to link TMDb ID' }));
+      throw new Error(err.detail || 'Failed to link TMDb ID');
+    }
+    return res.json();
+  },
+
+  async plexFixMatch(ratingKey: string, options?: { title?: string; year?: number }): Promise<{
+    success: boolean;
+    matched_title?: string;
+    matched_year?: number;
+    matched_guid?: string;
+    message: string;
+  }> {
+    const res = await fetch(`/api/shows/${ratingKey}/plex-fix-match`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {})
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to fix match in Plex' }));
+      throw new Error(err.detail || 'Failed to fix match in Plex');
+    }
+    return res.json();
   }
 };
+

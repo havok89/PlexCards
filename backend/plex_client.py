@@ -146,3 +146,30 @@ class PlexClient:
             if match:
                 return int(match.group(1))
         return None
+
+    def fix_match_show(self, rating_key: str, title: Optional[str] = None, year: Optional[int] = None) -> Dict[str, Any]:
+        """Search Plex agent matches for a show and apply the top match to fix matching in Plex."""
+        server = self.server
+        show = server.fetchItem(int(rating_key))
+        search_title = title or show.title
+        search_year = year or show.year
+        
+        matches = show.matches(title=search_title, year=search_year)
+        if not matches and search_year:
+            matches = show.matches(title=search_title)
+
+        if not matches:
+            return {"success": False, "message": f"No matches found in Plex for '{search_title}'"}
+
+        best_match = matches[0]
+        logger.info(f"Applying Plex fixMatch for '{show.title}' -> '{best_match.name}' ({best_match.year}, guid={best_match.guid})")
+        show.fixMatch(best_match)
+
+        return {
+            "success": True,
+            "matched_title": best_match.name,
+            "matched_year": best_match.year,
+            "matched_guid": best_match.guid,
+            "message": f"Successfully matched '{best_match.name}' ({best_match.year}) in Plex."
+        }
+

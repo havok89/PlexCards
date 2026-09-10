@@ -7,6 +7,7 @@ interface NavbarProps {
   onScan: () => void;
   isScanning: boolean;
   onOpenSettings: () => void;
+  listenerConnected?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -14,7 +15,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSearchChange,
   onScan,
   isScanning,
-  onOpenSettings
+  onOpenSettings,
+  listenerConnected = false
 }) => {
   return (
     <header className="bg-dark-900 border-b border-gray-800 sticky top-0 z-40 px-6 py-4">
@@ -44,6 +46,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               onChange={(e) => onSearchChange(e.target.value)}
               className="bg-dark-800 border border-gray-700 rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-brand-500 w-64 text-white placeholder-gray-500 transition"
             />
+          </div>
+
+          <div
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-dark-800 border border-gray-700 text-xs font-medium text-gray-300 transition"
+            title={listenerConnected ? "Plex Real-Time Listener: Connected. New episodes are automatically detected via WebSocket." : "Plex Listener: Reconnecting..."}
+          >
+            <span className={`w-2 h-2 rounded-full ${listenerConnected ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse' : 'bg-amber-400'}`} />
+            <span className="text-[11px]">{listenerConnected ? 'Live' : 'Offline'}</span>
           </div>
 
           <button

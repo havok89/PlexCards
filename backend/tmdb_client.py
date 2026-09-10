@@ -68,3 +68,38 @@ class TMDbClient:
         except Exception as e:
             logger.error(f"Error fetching episode still for {tmdb_id} S{season_number}E{episode_number}: {e}")
         return None
+
+    def search_shows(self, query: str, year: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Search TV shows on TMDb by title and optional release/air year."""
+        if not self.api_key or not query:
+            return []
+
+        params: Dict[str, Any] = {
+            "api_key": self.api_key,
+            "query": query,
+        }
+        if year:
+            params["first_air_date_year"] = year
+
+        url = f"{self.BASE_URL}/search/tv"
+        try:
+            r = requests.get(url, params=params, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                results = []
+                for item in data.get("results", []):
+                    air_date = item.get("first_air_date") or ""
+                    release_year = int(air_date[:4]) if air_date and air_date[:4].isdigit() else None
+                    results.append({
+                        "tmdb_id": item["id"],
+                        "name": item.get("name"),
+                        "year": release_year,
+                        "overview": item.get("overview"),
+                        "poster_url": f"{self.IMAGE_BASE}{item.get('poster_path')}" if item.get("poster_path") else None,
+                        "backdrop_url": f"{self.IMAGE_BASE}{item.get('backdrop_path')}" if item.get("backdrop_path") else None,
+                    })
+                return results
+        except Exception as e:
+            logger.error(f"Error searching TMDb shows for '{query}': {e}")
+        return []
+

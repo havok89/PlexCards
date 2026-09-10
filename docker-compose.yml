@@ -1,0 +1,16 @@
+services:
+  plexposters:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: plexposters:latest
+    container_name: plexposters
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./cache:/app/cache
+      - ./custom_fonts:/app/custom_fonts

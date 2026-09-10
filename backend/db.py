@@ -254,3 +254,40 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
     })
     conn.commit()
     conn.close()
+
+def update_show_tmdb_id(
+    rating_key: str, 
+    tmdb_id: Optional[int], 
+    poster_url: Optional[str] = None, 
+    backdrop_url: Optional[str] = None
+):
+    """Update TMDb ID and optionally poster/backdrop URLs for a show."""
+    conn = get_db()
+    cursor = conn.cursor()
+    if poster_url and backdrop_url:
+        cursor.execute("""
+        UPDATE shows 
+        SET tmdb_id = ?, poster_url = COALESCE(?, poster_url), backdrop_url = COALESCE(?, backdrop_url), updated_at = CURRENT_TIMESTAMP
+        WHERE rating_key = ?
+        """, (tmdb_id, poster_url, backdrop_url, rating_key))
+    elif poster_url:
+        cursor.execute("""
+        UPDATE shows 
+        SET tmdb_id = ?, poster_url = COALESCE(?, poster_url), updated_at = CURRENT_TIMESTAMP
+        WHERE rating_key = ?
+        """, (tmdb_id, poster_url, rating_key))
+    elif backdrop_url:
+        cursor.execute("""
+        UPDATE shows 
+        SET tmdb_id = ?, backdrop_url = COALESCE(?, backdrop_url), updated_at = CURRENT_TIMESTAMP
+        WHERE rating_key = ?
+        """, (tmdb_id, backdrop_url, rating_key))
+    else:
+        cursor.execute("""
+        UPDATE shows 
+        SET tmdb_id = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE rating_key = ?
+        """, (tmdb_id, rating_key))
+    conn.commit()
+    conn.close()
+

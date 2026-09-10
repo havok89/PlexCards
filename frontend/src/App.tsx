@@ -81,6 +81,7 @@ export const App: React.FC = () => {
         onScan={handleScan}
         isScanning={isScanning}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        listenerConnected={config.listener_connected}
       />
 
       <FilterBar
@@ -143,6 +144,7 @@ export const App: React.FC = () => {
           onShowsUpdated={loadData}
           testMode={config.test_mode}
           tvLibrary={config.tv_library}
+          listenerConnected={config.listener_connected}
         />
       )}
     </div>

@@ -18,7 +18,12 @@ import {
   Loader2,
   LayoutTemplate,
   Upload,
-  Star
+  Star,
+  Search,
+  Edit2,
+  AlertTriangle,
+  RefreshCw,
+  Film
 } from 'lucide-react';
 
 // Global cache for preview object URLs across modal opens
@@ -71,6 +76,20 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   const [updateScope, setUpdateScope] = useState<'all' | 'missing'>('all');
   const [isForceLive, setIsForceLive] = useState<boolean>(false);
   const [previewTab, setPreviewTab] = useState<'mediux' | 'generator'>('mediux');
+
+  // TMDb search and matching state
+  const [isTmdbModalOpen, setIsTmdbModalOpen] = useState<boolean>(false);
+  const [tmdbSearchQuery, setTmdbSearchQuery] = useState<string>('');
+  const [tmdbSearchYear, setTmdbSearchYear] = useState<string>('');
+  const [tmdbSearchResults, setTmdbSearchResults] = useState<any[]>([]);
+  const [isSearchingTmdb, setIsSearchingTmdb] = useState<boolean>(false);
+  const [customTmdbIdInput, setCustomTmdbIdInput] = useState<string>('');
+  const [isLinkingTmdb, setIsLinkingTmdb] = useState<boolean>(false);
+
+  // Plex fix match state
+  const [isPlexFixMatchConfirmOpen, setIsPlexFixMatchConfirmOpen] = useState<boolean>(false);
+  const [isFixingPlexMatch, setIsFixingPlexMatch] = useState<boolean>(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
 
@@ -246,6 +265,93 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         title: 'Error',
         message: err.message || 'Failed to update selected set'
       });
+    }
+  };
+
+  const handleOpenTmdbModal = () => {
+    const q = activeShow.title || '';
+    const y = activeShow.year ? String(activeShow.year) : '';
+    setTmdbSearchQuery(q);
+    setTmdbSearchYear(y);
+    setCustomTmdbIdInput(activeShow.tmdb_id ? String(activeShow.tmdb_id) : '');
+    setTmdbSearchResults([]);
+    setIsTmdbModalOpen(true);
+    if (q) {
+      handleSearchTmdb(q, y);
+    }
+  };
+
+  const handleSearchTmdb = async (query: string, year?: string) => {
+    if (!query.trim()) return;
+    setIsSearchingTmdb(true);
+    try {
+      const yearNum = year && !isNaN(parseInt(year, 10)) ? parseInt(year, 10) : undefined;
+      const data = await api.searchTmdb(query.trim(), yearNum);
+      setTmdbSearchResults(data.results || []);
+    } catch (err) {
+      showToast({
+        type: 'error',
+        title: 'TMDb Search Error',
+        message: String(err)
+      });
+    } finally {
+      setIsSearchingTmdb(false);
+    }
+  };
+
+  const handleLinkTmdb = async (tmdbId: number) => {
+    setIsLinkingTmdb(true);
+    try {
+      await api.setTmdbMatch(activeShow.rating_key, tmdbId);
+      showToast({
+        type: 'success',
+        title: 'TMDb Show Linked',
+        message: `Linked "${activeShow.title}" to TMDb ID ${tmdbId}.`
+      });
+      setIsTmdbModalOpen(false);
+
+      // Refresh show details and MediUX sets
+      setIsSetsLoading(true);
+      const updated = await api.getShowDetails(activeShow.rating_key);
+      setActiveShow(updated.show);
+      setEpisodes(updated.episodes || []);
+      const sets = updated.available_sets || [];
+      mediuxSetsCache.set(activeShow.rating_key, sets);
+      setAvailableSets(sets);
+      setAutoMediuxSetId(updated.auto_mediux_set_id || null);
+      setIsSetsLoading(false);
+
+      onShowUpdated();
+    } catch (err) {
+      showToast({
+        type: 'error',
+        title: 'Failed to Link TMDb',
+        message: String(err)
+      });
+    } finally {
+      setIsLinkingTmdb(false);
+    }
+  };
+
+  const handlePlexFixMatch = async () => {
+    setIsFixingPlexMatch(true);
+    try {
+      const res = await api.plexFixMatch(activeShow.rating_key);
+      showToast({
+        type: 'success',
+        title: 'Plex Fix Match Triggered',
+        message: res.message || `Successfully requested Plex to fix match "${activeShow.title}".`
+      });
+      setIsPlexFixMatchConfirmOpen(false);
+      onShowUpdated();
+    } catch (err) {
+      showToast({
+        type: 'error',
+        title: 'Plex Fix Match Failed',
+        message: String(err)
+      });
+    } finally {
+      setIsFixingPlexMatch(false);
     }
   };
 
@@ -498,9 +604,53 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 {activeShow.title}
               </h2>
-              <p className="text-xs text-gray-400">
-                TMDb ID: {activeShow.tmdb_id} • {activeShow.year || ''}
-              </p>
+              <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5 flex-wrap">
+                {activeShow.year && <span>{activeShow.year}</span>}
+                {activeShow.year && <span>•</span>}
+                {activeShow.tmdb_id ? (
+                  <div className="flex items-center gap-1.5 bg-dark-800 border border-gray-700/80 px-2 py-0.5 rounded text-[11px]">
+                    <a
+                      href={`https://www.themoviedb.org/tv/${activeShow.tmdb_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-gray-300 hover:text-brand-400 flex items-center gap-1 transition"
+                      title="View show on TMDb"
+                    >
+                      <span>TMDb: {activeShow.tmdb_id}</span>
+                      <ExternalLink className="w-2.5 h-2.5 text-gray-500" />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={handleOpenTmdbModal}
+                      className="text-gray-400 hover:text-white transition p-0.5 hover:bg-dark-700 rounded ml-0.5"
+                      title="Edit or Change TMDb Match"
+                    >
+                      <Edit2 className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleOpenTmdbModal}
+                    className="inline-flex items-center gap-1 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded text-[11px] font-semibold transition"
+                    title="Find and link this show to TMDb"
+                  >
+                    <AlertTriangle className="w-3 h-3" />
+                    Link TMDb
+                  </button>
+                )}
+
+                <span className="text-gray-600">•</span>
+                <button
+                  type="button"
+                  onClick={() => setIsPlexFixMatchConfirmOpen(true)}
+                  className="text-gray-400 hover:text-blue-400 transition text-[11px] flex items-center gap-1 bg-dark-800 hover:bg-dark-700 border border-gray-700/80 px-2 py-0.5 rounded"
+                  title="Prompt Plex to fix match this show with the Plex Series Agent"
+                >
+                  <RefreshCw className="w-2.5 h-2.5" />
+                  Fix Match in Plex
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1257,6 +1407,204 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* TMDb Search & Link Modal */}
+      {isTmdbModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-dark-900 border border-gray-700 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-dark-850">
+              <div>
+                <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                  <Film className="w-4 h-4 text-brand-500" />
+                  Link TMDb TV Show
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Search TMDb to match &ldquo;{activeShow.title}&rdquo; or enter a numeric ID directly.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTmdbModalOpen(false)}
+                className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-dark-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 border-b border-gray-800 space-y-3 bg-dark-850/50">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSearchTmdb(tmdbSearchQuery, tmdbSearchYear);
+                }}
+                className="flex gap-2"
+              >
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={tmdbSearchQuery}
+                    onChange={(e) => setTmdbSearchQuery(e.target.value)}
+                    placeholder="Search TV show title..."
+                    className="w-full bg-dark-950 border border-gray-700 text-white rounded-lg pl-9 pr-3 py-1.5 text-xs focus:border-brand-500 focus:outline-none"
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={tmdbSearchYear}
+                  onChange={(e) => setTmdbSearchYear(e.target.value)}
+                  placeholder="Year (opt)"
+                  className="w-20 bg-dark-950 border border-gray-700 text-white rounded-lg px-2.5 py-1.5 text-xs focus:border-brand-500 focus:outline-none text-center"
+                />
+                <button
+                  type="submit"
+                  disabled={isSearchingTmdb || !tmdbSearchQuery.trim()}
+                  className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-dark-950 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition shrink-0"
+                >
+                  {isSearchingTmdb ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                  Search
+                </button>
+              </form>
+
+              <div className="flex items-center gap-2 pt-1 border-t border-gray-800/80">
+                <span className="text-[11px] text-gray-400 shrink-0">Direct TMDb ID:</span>
+                <input
+                  type="number"
+                  value={customTmdbIdInput}
+                  onChange={(e) => setCustomTmdbIdInput(e.target.value)}
+                  placeholder="e.g. 95442"
+                  className="w-32 bg-dark-950 border border-gray-700 text-white rounded-lg px-2 py-1 text-xs focus:border-brand-500 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const idNum = parseInt(customTmdbIdInput, 10);
+                    if (idNum) handleLinkTmdb(idNum);
+                  }}
+                  disabled={isLinkingTmdb || !customTmdbIdInput.trim()}
+                  className="bg-dark-800 hover:bg-dark-700 text-gray-200 border border-gray-700 px-2.5 py-1 rounded-lg text-xs font-medium disabled:opacity-50 transition"
+                >
+                  Link ID
+                </button>
+              </div>
+            </div>
+
+            {/* Search Results List */}
+            <div className="p-4 overflow-y-auto flex-1 space-y-2.5 min-h-[220px]">
+              {isSearchingTmdb ? (
+                <div className="flex flex-col items-center justify-center py-10 text-gray-400 gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin text-brand-500" />
+                  <p className="text-xs">Searching TMDb database...</p>
+                </div>
+              ) : tmdbSearchResults.length > 0 ? (
+                tmdbSearchResults.map((res) => (
+                  <div
+                    key={res.tmdb_id}
+                    className="flex items-center justify-between p-3 rounded-xl bg-dark-800/70 border border-gray-700/80 hover:border-brand-500/50 transition gap-3"
+                  >
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="w-12 h-16 bg-dark-950 rounded-lg overflow-hidden shrink-0 border border-gray-800">
+                        {res.poster_url ? (
+                          <img
+                            src={res.poster_url}
+                            alt={res.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-600 text-[10px]">
+                            No Art
+                          </div>
+                        )}
+                      </div>
+                      <div className="overflow-hidden">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-white text-xs truncate">
+                            {res.name}
+                          </h4>
+                          {res.year && (
+                            <span className="text-[11px] text-gray-400 bg-dark-900 px-1.5 py-0.5 rounded border border-gray-800">
+                              {res.year}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-400 line-clamp-2 mt-0.5">
+                          {res.overview || 'No overview available.'}
+                        </p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">
+                          TMDb ID: {res.tmdb_id}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleLinkTmdb(res.tmdb_id)}
+                      disabled={isLinkingTmdb}
+                      className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-dark-950 font-bold px-3 py-1.5 rounded-lg text-xs shrink-0 transition"
+                    >
+                      {activeShow.tmdb_id === res.tmdb_id ? 'Active Match' : 'Select & Link'}
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-10 text-gray-500 text-xs">
+                  {tmdbSearchQuery ? 'No TV shows found matching this search.' : 'Type a query above to search TMDb.'}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Plex Fix Match Confirmation Dialog */}
+      {isPlexFixMatchConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-dark-900 border border-gray-700 w-full max-w-md rounded-2xl shadow-2xl p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-blue-500/10 border border-blue-500/30 rounded-xl text-blue-400 shrink-0">
+                <RefreshCw className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-sm">
+                  Fix Match in Plex?
+                </h3>
+                <p className="text-xs text-gray-300 mt-1 leading-relaxed">
+                  This will instruct Plex Media Server to search its agent for <strong className="text-white">&ldquo;{activeShow.title}&rdquo;</strong> and apply official metadata (description, cast, genres).
+                </p>
+                <p className="text-[11px] text-amber-400/90 mt-2 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 leading-tight">
+                  ⚠️ <strong>Note:</strong> When Plex matches a show, Plex may download its own default artwork. If needed, you can re-apply your custom cards and posters here at any time.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-2 border-t border-gray-800">
+              <button
+                type="button"
+                onClick={() => setIsPlexFixMatchConfirmOpen(false)}
+                disabled={isFixingPlexMatch}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-400 hover:text-white hover:bg-dark-800 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePlexFixMatch}
+                disabled={isFixingPlexMatch}
+                className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold px-4 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition shadow-md"
+              >
+                {isFixingPlexMatch ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Fixing in Plex...</span>
+                  </>
+                ) : (
+                  <span>Yes, Fix Match in Plex</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

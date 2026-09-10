@@ -22,11 +22,29 @@ class SyncManager:
         self.renderer = TitleCardRenderer()
 
     def scan_and_index_library(self):
-        """Scan all TV shows from Plex and store in database."""
+        """Scan all TV shows from Plex and store in database. Auto-matches shows with TMDb if Plex has no TMDb ID."""
         shows = self.plex.get_all_shows()
         logger.info(f"Indexing {len(shows)} shows from Plex...")
         
         for s in shows:
+            # If Plex did not provide a TMDb ID (e.g. local:// guid), attempt automatic TMDb search match
+            if not s.get("tmdb_id") and s.get("title"):
+                try:
+                    search_results = self.tmdb.search_shows(s["title"], year=s.get("year"))
+                    if not search_results and s.get("year"):
+                        # Fallback without year constraint
+                        search_results = self.tmdb.search_shows(s["title"])
+                    if search_results:
+                        top = search_results[0]
+                        s["tmdb_id"] = top["tmdb_id"]
+                        if not s.get("poster_url") and top.get("poster_url"):
+                            s["poster_url"] = top["poster_url"]
+                        if not s.get("backdrop_url") and top.get("backdrop_url"):
+                            s["backdrop_url"] = top["backdrop_url"]
+                        logger.info(f"🎯 Auto-matched '{s['title']}' to TMDb ID {s['tmdb_id']} ('{top.get('name')}', {top.get('year')})")
+                except Exception as e:
+                    logger.warning(f"Could not auto-match TMDb ID for '{s['title']}': {e}")
+
             upsert_show(s)
             
             # Record episodes in database
@@ -181,6 +199,22 @@ class SyncManager:
                 pref_str = get_setting("preferred_mediux_creators", "")
                 pref_creators = [p.strip() for p in pref_str.split(",") if p.strip()]
                 matched_set = self.mediux.find_best_matching_set(tmdb_id, required_seasons, preferred_creators=pref_creators)
+
+        # In Auto mode, when syncing missing only (force_all=False), also upgrade any episode
+        # that currently has a temporary generator_interim card if the matched MediUX set now has an official card
+        if mode == "auto" and not force_all and matched_set:
+            cards = matched_set.get("title_cards", {})
+            existing_ep_keys = {ep["rating_key"] for ep in target_episodes}
+            for ep in episodes:
+                ep_key = ep["rating_key"]
+                if ep_key in existing_ep_keys:
+                    continue
+                s_num = ep["season_number"]
+                e_num = ep["episode_number"]
+                has_mediux = bool(cards.get(f"{s_num}_{e_num}") or cards.get((s_num, e_num)))
+                if has_mediux and existing_cards.get(ep_key) == "generator_interim":
+                    target_episodes.append(ep)
+                    existing_ep_keys.add(ep_key)
 
         # Pre-check target season posters
         target_seasons = []

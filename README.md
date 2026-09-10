@@ -43,7 +43,26 @@ Key settings:
 * `GEMINI_API_KEY`: *(Optional)* For AI typography and styling recommendations
 * `TEST_MODE`: `true` (Default, keeps Plex safe while testing by preventing server uploads)
 
-### 2. Run the App (Backend + React UI)
+### 2. Running with Docker (Recommended) 🐳
+
+PlexPosters includes a multi-stage Dockerfile that bundles the React frontend and FastAPI backend into a single container.
+
+1. **Start with Docker Compose:**
+   ```bash
+   docker compose up -d --build
+   ```
+
+2. **Access the Dashboard:**
+   Open your browser at `http://localhost:8080` (or `http://<your-host-ip>:8080`).
+
+#### Persistent Volumes:
+* `./data:/app/data`: Stores the SQLite database (`plexposters.db`), show settings, and custom presets.
+* `./cache:/app/cache`: Stores downloaded Google fonts, episode stills, and test outputs.
+* `./custom_fonts:/app/custom_fonts`: Stores custom `.ttf` and `.otf` fonts uploaded through the web UI.
+
+---
+
+### 3. Running Locally (Python + React)
 ```bash
 # Activate virtual environment
 source .venv/bin/activate

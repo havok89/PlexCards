@@ -66,4 +66,5 @@ export interface AppConfig {
   test_mode: boolean;
   tv_library: string;
   poll_interval_hours: number;
+  listener_connected?: boolean;
 }

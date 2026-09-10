@@ -21,13 +21,15 @@ interface SettingsModalProps {
   onShowsUpdated: () => void;
   testMode: boolean;
   tvLibrary: string;
+  listenerConnected?: boolean;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onShowsUpdated,
   testMode,
-  tvLibrary
+  tvLibrary,
+  listenerConnected = false
 }) => {
   const { showToast } = useToast();
   const [autoGemini, setAutoGemini] = useState<boolean>(true);
@@ -351,6 +353,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="flex items-center justify-between">
                   <span>Plex TV Library:</span>
                   <strong className="text-white">{tvLibrary || 'TV shows'}</strong>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Real-Time Alert Listener:</span>
+                  {listenerConnected ? (
+                    <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+                      Active (Instant detection via WebSocket)
+                    </span>
+                  ) : (
+                    <span className="text-amber-400 font-semibold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-400" />
+                      Reconnecting...
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Safety Gating:</span>
