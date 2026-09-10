@@ -126,7 +126,7 @@ export const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-dark-950 flex flex-col items-center justify-center text-gray-400 gap-3">
         <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
-        <p className="text-sm">Loading PlexPosters...</p>
+        <p className="text-sm">Loading PlexCards...</p>
       </div>
     );
   }

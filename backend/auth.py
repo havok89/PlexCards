@@ -13,7 +13,7 @@ from backend.db import get_setting, set_setting
 
 logger = logging.getLogger(__name__)
 
-SESSION_COOKIE_NAME = "plexposters_session"
+SESSION_COOKIE_NAME = "plexcards_session"
 SESSION_DURATION_DAYS = 7
 
 def get_app_secret() -> str:
@@ -28,11 +28,11 @@ def get_app_secret() -> str:
 
 def get_client_id() -> str:
     """Get or generate persistent client identifier for Plex OAuth."""
-    if config.PLEX_CLIENT_IDENTIFIER and config.PLEX_CLIENT_IDENTIFIER != "PlexPosters-App":
+    if config.PLEX_CLIENT_IDENTIFIER and config.PLEX_CLIENT_IDENTIFIER not in ("PlexPosters-App", "PlexCards-App"):
         return config.PLEX_CLIENT_IDENTIFIER
     client_id = get_setting("plex_client_identifier", "")
     if not client_id:
-        client_id = f"PlexPosters-{secrets.token_hex(8)}"
+        client_id = f"PlexCards-{secrets.token_hex(8)}"
         set_setting("plex_client_identifier", client_id)
     return client_id
 
@@ -77,7 +77,7 @@ class PlexOAuth:
     @classmethod
     def get_headers(cls) -> Dict[str, str]:
         return {
-            "X-Plex-Product": "PlexPosters",
+            "X-Plex-Product": "PlexCards",
             "X-Plex-Version": "1.0.0",
             "X-Plex-Client-Identifier": get_client_id(),
             "Accept": "application/json"
@@ -94,7 +94,7 @@ class PlexOAuth:
         code = data["code"]
         auth_url = (
             f"https://app.plex.tv/auth#?clientID={client_id}&code={code}"
-            f"&context%5Bdevice%5D%5Bproduct%5D=PlexPosters"
+            f"&context%5Bdevice%5D%5Bproduct%5D=PlexCards"
         )
         return {
             "pin_id": data["id"],
@@ -165,7 +165,7 @@ def get_current_user(request: Request) -> Dict[str, Any]:
     if not config.ENABLE_AUTH:
         return {"username": "admin", "is_admin": True, "auth_enabled": False}
 
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+    token = request.cookies.get(SESSION_COOKIE_NAME) or request.cookies.get("plexposters_session")
     if not token:
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):

@@ -33,7 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div className="hidden sm:block min-w-0">
             <h1 className="text-base sm:text-xl font-bold tracking-tight text-white">
-              PlexPosters
+              PlexCards
             </h1>
             <p className="text-xs text-gray-400 hidden md:block truncate">Automated MediUX & Smart Title Card Generator</p>
           </div>

@@ -124,7 +124,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           <div className="w-16 h-16 rounded-2xl bg-brand-500 flex items-center justify-center text-dark-950 font-black shadow-xl shadow-brand-500/25 mb-4">
             <Film className="w-8 h-8" />
           </div>
-          <h1 className="text-2xl font-black text-white tracking-tight">PlexPosters</h1>
+          <h1 className="text-2xl font-black text-white tracking-tight">PlexCards</h1>
           <p className="text-sm text-gray-400 mt-1.5">
             Automated MediUX & Smart Title Card Generator
           </p>

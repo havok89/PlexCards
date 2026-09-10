@@ -29,7 +29,7 @@ from backend.auth import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="PlexPosters", version="1.0.0")
+app = FastAPI(title="PlexCards", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,12 +71,12 @@ def on_startup():
     plex_listener.start()
     import threading
     threading.Thread(target=sync_mgr.sync_show_statuses, daemon=True).start()
-    logger.info("PlexPosters API and Live AlertListener started.")
+    logger.info("PlexCards API and Live AlertListener started.")
 
 @app.on_event("shutdown")
 def on_shutdown():
     plex_listener.stop()
-    logger.info("PlexPosters API and Live AlertListener stopped.")
+    logger.info("PlexCards API and Live AlertListener stopped.")
 
 # ----------------------------------------------------
 # API ENDPOINTS

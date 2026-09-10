@@ -1,4 +1,4 @@
-# PlexPosters 🎬🎨
+# PlexCards 🎬🎨
 
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?logo=fastapi)](https://fastapi.tiangolo.com/)
@@ -7,9 +7,9 @@
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://python.org/)
 
-**PlexPosters** is an automated title card and artwork studio for your Plex TV libraries. It bridges the gap between community-crafted [MediUX](https://mediux.pro/) sets and immediate, automated local title card generation with real-time preview and optional Google Gemini AI styling.
+**PlexCards** is an automated title card and artwork studio for your Plex TV libraries. It bridges the gap between community-crafted [MediUX](https://mediux.pro/) sets and immediate, automated local title card generation with real-time preview and optional Google Gemini AI styling.
 
-Whether you want consistent artwork for airing series before designers upload to MediUX, custom gradient cards inspired by *Star Trek: Strange New Worlds*, or one-click automated artwork sync the moment an episode downloads, PlexPosters handles it effortlessly.
+Whether you want consistent artwork for airing series before designers upload to MediUX, custom gradient cards inspired by *Star Trek: Strange New Worlds*, or one-click automated artwork sync the moment an episode downloads, PlexCards handles it effortlessly.
 
 ---
 
@@ -38,7 +38,7 @@ Whether you want consistent artwork for airing series before designers upload to
 
 ### 4. ⚡ Real-Time Plex WebSocket Listener
 - **Instant Event Sync:** Listens to Plex Media Server’s live WebSocket event stream (`/ws/notifications`).
-- **Instant Card Application:** When a new episode finishes scanning into your library, PlexPosters immediately generates and uploads the title card without waiting for a scheduled poll.
+- **Instant Card Application:** When a new episode finishes scanning into your library, PlexCards immediately generates and uploads the title card without waiting for a scheduled poll.
 
 ### 5. 🌐 Cloudflare & Remote Access Ready
 - **Lightweight Poster Thumbnails:** High-resolution posters are automatically compressed and resized using PIL from ~2.5MB down to ~45KB–60KB (**96%+ bandwidth savings**), keeping grid views lightning fast even on cellular data.
@@ -62,12 +62,12 @@ Whether you want consistent artwork for airing series before designers upload to
 
 ## 🚀 Quick Start with Docker (Recommended)
 
-The easiest way to run PlexPosters is using Docker and Docker Compose. A multi-stage `Dockerfile` packages the React frontend and FastAPI backend into a single container.
+The easiest way to run PlexCards is using Docker and Docker Compose. A multi-stage `Dockerfile` packages the React frontend and FastAPI backend into a single container.
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-username/PlexPosters.git
-cd PlexPosters
+git clone https://github.com/havok89/PlexCards.git
+cd PlexCards
 ```
 
 ### 2. Configure Environment Variables
@@ -137,13 +137,13 @@ Here is the complete list of variables supported in `.env`:
 1. Go to [Google AI Studio](https://aistudio.google.com/).
 2. Click **Get API key** and create a free key in a Google Cloud project.
 3. Paste the key into `GEMINI_API_KEY`.
-*(Note: If left blank, PlexPosters runs with all manual styling features enabled and AI components cleanly hidden).*
+*(Note: If left blank, PlexCards runs with all manual styling features enabled and AI components cleanly hidden).*
 
 ---
 
 ## 🛠️ Manual Installation (Without Docker)
 
-If you prefer to run PlexPosters natively on your host machine:
+If you prefer to run PlexCards natively on your host machine:
 
 ### Prerequisites
 - **Python 3.10+**
@@ -151,8 +151,8 @@ If you prefer to run PlexPosters natively on your host machine:
 
 ### 1. Clone & Set Up Backend
 ```bash
-git clone https://github.com/your-username/PlexPosters.git
-cd PlexPosters
+git clone https://github.com/havok89/PlexCards.git
+cd PlexCards
 
 # Create and activate Python virtual environment
 python3 -m venv .venv
@@ -204,7 +204,7 @@ If you are developing or modifying the React UI:
 ## 📂 Persistent Data & Storage
 
 When using Docker, the following folders are mapped as persistent volumes:
-- `./data`: SQLite database (`plexposters.db`), storing show states, style configurations, and user preferences.
+- `./data`: SQLite database (`plexcards.db` / `plexposters.db`), storing show states, style configurations, and user preferences.
 - `./cache`: Downloaded Google fonts, cached episode stills, thumbnail posters, and temporary preview renders.
 - `./custom_fonts`: Any custom `.ttf` or `.otf` fonts uploaded through the web UI studio.
 

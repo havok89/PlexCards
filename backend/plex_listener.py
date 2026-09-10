@@ -180,9 +180,9 @@ class PlexAlertListenerDaemon:
                 show = item.show()
                 show_key = str(show.ratingKey)
 
-                # Ignore feedback loops from recent PlexPosters uploads
+                # Ignore feedback loops from recent PlexCards uploads
                 if self.is_show_ignored(show_key):
-                    logger.debug(f"Plex alert ignored for '{show.title}' (active PlexPosters upload window).")
+                    logger.debug(f"Plex alert ignored for '{show.title}' (active PlexCards upload window).")
                     return
 
                 ep_key = str(item.ratingKey)

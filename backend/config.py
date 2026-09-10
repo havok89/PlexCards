@@ -34,7 +34,7 @@ TEST_MODE = os.getenv("TEST_MODE", "true").lower() in ("true", "1", "yes")
 ENABLE_AUTH = os.getenv("ENABLE_AUTH", "false").lower() in ("true", "1", "yes")
 ALLOWED_USERS = [u.strip().lower() for u in os.getenv("ALLOWED_USERS", "").split(",") if u.strip()]
 SECRET_KEY = os.getenv("SECRET_KEY", "")
-PLEX_CLIENT_IDENTIFIER = os.getenv("PLEX_CLIENT_IDENTIFIER", "PlexPosters-App")
+PLEX_CLIENT_IDENTIFIER = os.getenv("PLEX_CLIENT_IDENTIFIER", "PlexCards-App")
 
 # Directories
 DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
@@ -49,4 +49,7 @@ CUSTOM_FONTS_DIR = Path(os.getenv("CUSTOM_FONTS_DIR", BASE_DIR / "custom_fonts")
 for directory in [DATA_DIR, CACHE_DIR, FONTS_DIR, STILLS_DIR, TEST_OUTPUT_DIR, PREVIEWS_DIR, CUSTOM_FONTS_DIR, POSTERS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
-DB_PATH = DATA_DIR / "plexposters.db"
+# Database path (supports existing plexposters.db or new plexcards.db)
+legacy_db = DATA_DIR / "plexposters.db"
+new_db = DATA_DIR / "plexcards.db"
+DB_PATH = legacy_db if (legacy_db.exists() and not new_db.exists()) else new_db
