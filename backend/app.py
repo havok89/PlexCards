@@ -493,6 +493,9 @@ def fix_match_in_plex(rating_key: str, payload: dict = Body(default={})):
 @app.post("/api/shows/{rating_key}/style")
 def save_show_style(rating_key: str, payload: dict = Body(...)):
     """Save generator style preset and options."""
+    if "subheading_font_family" in payload:
+        s_ff = (payload.get("subheading_font_family") or "").strip()
+        payload["subheading_font_family"] = s_ff if s_ff else None
     update_show_style(rating_key, {**payload, "has_custom_style": 1})
     return {"status": "success"}
 
@@ -514,6 +517,9 @@ def generate_preview(rating_key: str, payload: dict = Body(...)):
     episode_title = payload.get("episode_title", "Sample Episode Title")
 
     style = {**show, **payload}
+    if "subheading_font_family" in payload:
+        s_ff = (payload.get("subheading_font_family") or "").strip()
+        style["subheading_font_family"] = s_ff if s_ff else None
 
     # Request 5: Compute hash and check preview cache for instantaneous load
     cache_key = hashlib.md5(json.dumps({

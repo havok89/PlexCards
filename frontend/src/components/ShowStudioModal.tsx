@@ -197,7 +197,8 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         season_number: ep.season_number,
         episode_number: ep.episode_number,
         episode_title: ep.title,
-        ...styleConfig
+        ...styleConfig,
+        subheading_font_family: styleConfig.subheading_font_family || ''
       })
       .then((blob) => {
         if (!active) return;
@@ -512,6 +513,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     try {
       await api.saveStyle(activeShow.rating_key, {
         ...styleConfig,
+        subheading_font_family: styleConfig.subheading_font_family || '',
         ai_prompt: aiReasoning
       });
       setIsSavedJustNow(true);
@@ -538,6 +540,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
       // 1. Auto-save current styling first so preview matches what gets generated
       await api.saveStyle(activeShow.rating_key, {
         ...styleConfig,
+        subheading_font_family: styleConfig.subheading_font_family || '',
         ai_prompt: aiReasoning
       });
 

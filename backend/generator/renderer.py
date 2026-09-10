@@ -51,7 +51,8 @@ class TitleCardRenderer:
             "Teko": "https://github.com/google/fonts/raw/main/ofl/teko/Teko%5Bwght%5D.ttf",
             "Michroma": "https://github.com/google/fonts/raw/main/ofl/michroma/Michroma-Regular.ttf",
             "Rubik": "https://github.com/google/fonts/raw/main/ofl/rubik/Rubik%5Bwght%5D.ttf",
-            "Barlow Condensed": "https://github.com/google/fonts/raw/main/ofl/barlowcondensed/BarlowCondensed-Bold.ttf"
+            "Barlow Condensed": "https://github.com/google/fonts/raw/main/ofl/barlowcondensed/BarlowCondensed-Bold.ttf",
+            "Montserrat": "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat%5Bwght%5D.ttf"
         }
         for name, url in default_font_urls.items():
             path = self.fonts_dir / f"{name.replace(' ', '')}.ttf"
@@ -138,8 +139,6 @@ class TitleCardRenderer:
         for ext in ["*.ttf", "*.otf"]:
             for p in self.custom_fonts_dir.glob(ext):
                 name = p.stem
-                if "montserrat" in name.lower():
-                    continue
                 if name.lower() not in seen:
                     seen.add(name.lower())
                     fonts.append({"name": name, "type": "custom", "filename": p.name})
@@ -148,8 +147,6 @@ class TitleCardRenderer:
         for ext in ["*.ttf", "*.otf"]:
             for p in self.fonts_dir.glob(ext):
                 name = p.stem
-                if "montserrat" in name.lower():
-                    continue
                 if name.lower() not in seen:
                     seen.add(name.lower())
                     fonts.append({"name": name, "type": "open_source", "filename": p.name})

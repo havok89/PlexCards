@@ -561,6 +561,14 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
                 className="w-full bg-dark-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-brand-500 font-medium"
               >
                 <option value="">Match Title Font ({styleConfig.font_family})</option>
+                {styleConfig.subheading_font_family &&
+                  !availableFonts.some(
+                    (f) => f.name.toLowerCase() === styleConfig.subheading_font_family?.toLowerCase()
+                  ) && (
+                    <option value={styleConfig.subheading_font_family}>
+                      {styleConfig.subheading_font_family} (Auto-downloaded / AI suggested)
+                    </option>
+                  )}
                 <optgroup label="Installed & Google Fonts">
                   {availableFonts.map((f) => (
                     <option key={f.name} value={f.name}>
