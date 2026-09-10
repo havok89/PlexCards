@@ -470,7 +470,8 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           subheading_icon: suggestion.subheading_icon || prev.subheading_icon,
           text_position: suggestion.text_position || prev.text_position,
           gradient_side: suggestion.gradient_side || prev.gradient_side,
-          gradient_width_pct: suggestion.gradient_width_pct || prev.gradient_width_pct
+          gradient_width_pct: suggestion.gradient_width_pct || prev.gradient_width_pct,
+          gradient_opacity_pct: suggestion.gradient_opacity_pct || prev.gradient_opacity_pct
         }));
       }
       setAiReasoning(suggestion.reasoning || '');

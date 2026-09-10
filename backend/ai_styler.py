@@ -27,8 +27,8 @@ class AIStyler:
         if not self._client:
             return {
                 "font_family": "Oswald",
-                "font_color": "#F4B84D",
-                "subheading_color": "#E5A93C",
+                "font_color": "#FFFFFF",
+                "subheading_color": "#D1D5DB",
                 "gradient_side": "left",
                 "gradient_width_pct": 48,
                 "gradient_opacity_pct": 90,
@@ -37,24 +37,45 @@ class AIStyler:
             }
 
         prompt = f"""
-You are a graphic design expert specializing in title cards and television branding.
-Analyze the following TV show and recommend the ideal title card typography and styling parameters:
+You are an elite graphic design and television branding expert specializing in title cards and cinematic typography for Plex.
+Analyze the following TV show and recommend optimal title card typography, color palette, and layout parameters:
 
 Show: {show_title}
 Genres: {', '.join(genres) if genres else 'Unknown'}
 Overview: {overview[:300] if overview else 'N/A'}
 User Style Direction: {user_prompt or 'Match the authentic tone, genre, and aesthetic of the series.'}
 
+--- CRITICAL DESIGN & READABILITY RULES ---
+1. READABILITY IS PARAMOUNT:
+   - Title cards are viewed from across the room on television screens, home theater projectors, and mobile displays.
+   - Text must be immediately legible and readable at a glance over photographic, potentially bright or busy episode background images.
+   - Choose fonts with strong glyph definition and clean letterforms. Never choose illegible decorative or spindly script fonts for episode titles.
+
+2. GRADIENT USAGE & PLACEMENT:
+   - The rendering engine applies a smooth, dark shadow gradient (black fading to transparent) directly behind the text area to guarantee contrast against bright or dynamic episode imagery.
+   - You MUST align "gradient_side" with "text_position":
+     * If "text_position" contains "bottom" ("center_bottom", "left_bottom", "right_bottom"), use "gradient_side": "bottom".
+     * If "text_position" is "left_center", use "gradient_side": "left".
+     * If "text_position" is "right_center", use "gradient_side": "right".
+   - "gradient_width_pct": Integer between 40 and 55 (covers the text footprint cleanly without overwhelming the backdrop).
+   - "gradient_opacity_pct": Integer between 82 and 95 (dense enough so white/bright scenes in the backdrop artwork do not bleed through and reduce legibility).
+
+3. TEXT COLORS & HIGH-CONTRAST PALETTE:
+   - Because the gradient behind the text is a DARK SHADOW (black/charcoal fade), all text colors MUST have HIGH LUMINANCE AND CONTRAST against a dark background.
+   - NEVER choose dark or low-contrast colors (e.g. navy, dark red, dark purple, forest green, dark gray/charcoal, muddy brown) as they will vanish into the gradient shadow and become unreadable.
+   - "font_color": Must be a high-luminance, eye-catching color that captures the show's spirit. Great choices include crisp white ("#FFFFFF"), bright warm ivory ("#FFF8E7"), golden amber ("#F4B84D", "#E5A00D"), cyber/electric cyan ("#00E5FF"), neon/acid accents ("#39FF14", "#FF5252"), or vibrant sunshine yellow ("#FFD600").
+   - "subheading_color": Must complement "font_color" while remaining crisp and easily readable against the dark gradient shadow. Use bright neutral tones (e.g. "#D1D5DB", "#E5E7EB", "#A3A3A3") or a lighter tonal companion to the title color. Never use dark grays (below #9CA3AF).
+
 Return ONLY a JSON object with these exact keys:
 - "font_family": The name of the best matching open-source font available (e.g. from Google Fonts / open repositories such as Montserrat, Oswald, Orbitron, Bebas Neue, Jost, Michroma, Bodoni Moda, Cinzel, Anton, Space Grotesk, Syne, Inter, Playfair Display, Cinzel Decorative, etc. If the show has an iconic proprietary font, provide the closest open-source equivalent). The server will automatically fetch it on the fly.
-- "font_color": Hex color code for the main episode title (e.g. "#FFFFFF", "#F4B84D", "#00E5FF", "#E50914", "#E0E0E0")
-- "subheading_color": Complementary hex color for season/episode text
+- "font_color": High-luminance hex color code for the main episode title (e.g. "#FFFFFF", "#F4B84D", "#00E5FF", "#FF5252", "#E0E0E0")
+- "subheading_color": Complementary, readable hex color for season/episode text (e.g. "#E5E7EB", "#D1D5DB", "#F4B84D")
 - "text_position": One of ["left_center", "left_bottom", "center_bottom", "right_center", "right_bottom"]
-- "gradient_side": "left", "bottom", or "right" (match the text_position: use "bottom" for bottom positions, "left" for left positions, "right" for right positions)
+- "gradient_side": "left", "bottom", or "right" (must strictly match text_position as described above)
 - "gradient_width_pct": Integer between 40 and 55
-- "gradient_opacity_pct": Integer between 80 and 95
+- "gradient_opacity_pct": Integer between 82 and 95
 - "subheading_icon": A single character separator between season and episode text (e.g. "•", "-", ":", "|", ".", "/", "~", "=" or "" for none). NEVER suggest deltas or logos; always use a clean typographical character separator that complements the show's typography.
-- "reasoning": 1 sentence explaining the creative design choice (mentioning the font match)
+- "reasoning": 1-2 sentences explaining how the font choice and palette capture the show's aesthetic while maximizing legibility against the gradient.
 """
 
         try:
@@ -69,6 +90,33 @@ Return ONLY a JSON object with these exact keys:
             )
             raw_text = response.text.strip()
             data = json.loads(raw_text)
+
+            # Defensive post-processing: enforce gradient placement matches text position
+            text_pos = data.get("text_position", "left_center")
+            if "bottom" in text_pos and data.get("gradient_side") != "bottom":
+                data["gradient_side"] = "bottom"
+            elif "right" in text_pos and data.get("gradient_side") not in ("right", "bottom"):
+                data["gradient_side"] = "right"
+            elif "left" in text_pos and data.get("gradient_side") not in ("left", "bottom"):
+                data["gradient_side"] = "left"
+
+            # Defensive post-processing: verify text colors have sufficient luminance against dark gradient
+            def _is_too_dark(hex_str: str) -> bool:
+                try:
+                    h = hex_str.strip().lstrip("#")
+                    if len(h) == 6:
+                        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+                        lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+                        return lum < 0.25
+                except Exception:
+                    pass
+                return False
+
+            if _is_too_dark(data.get("font_color", "")):
+                data["font_color"] = "#FFFFFF"
+            if _is_too_dark(data.get("subheading_color", "")):
+                data["subheading_color"] = "#D1D5DB"
+
             return data
         except Exception as e:
             err_str = str(e)
@@ -88,8 +136,8 @@ Return ONLY a JSON object with these exact keys:
                 "error": user_msg,
                 "is_unavailable": is_503,
                 "font_family": "Oswald",
-                "font_color": "#F4B84D",
-                "subheading_color": "#E5A93C",
+                "font_color": "#FFFFFF",
+                "subheading_color": "#D1D5DB",
                 "gradient_side": "left",
                 "gradient_width_pct": 48,
                 "gradient_opacity_pct": 90,
