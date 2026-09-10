@@ -219,6 +219,8 @@ class TitleCardRenderer:
         show_subheading = bool(style.get("show_subheading", 1))
         sub_icon = style.get("subheading_icon", "dot")
         sub_fmt = style.get("subheading_format", "season_num_ep_num")
+        title_font_size = int(style.get("title_font_size") or 82)
+        sub_font_size = int(style.get("subheading_font_size") or 34)
         
         # Load and resize base still to standard 1080p
         base_img = Image.open(base_image_path).convert("RGBA")
@@ -232,8 +234,8 @@ class TitleCardRenderer:
         # 2. Setup Fonts
         font_path = self.get_font_path(font_family)
         if font_path.exists():
-            sub_font = ImageFont.truetype(str(font_path), size=34)
-            title_font = ImageFont.truetype(str(font_path), size=82)
+            sub_font = ImageFont.truetype(str(font_path), size=sub_font_size)
+            title_font = ImageFont.truetype(str(font_path), size=title_font_size)
         else:
             sub_font = ImageFont.load_default()
             title_font = ImageFont.load_default()
@@ -262,7 +264,7 @@ class TitleCardRenderer:
         if current_line:
             lines.append(current_line)
 
-        line_height = 92
+        line_height = int(title_font_size * 1.12)
         total_title_height = len(lines) * line_height
 
         # Compute Vertical Start Y
@@ -272,7 +274,7 @@ class TitleCardRenderer:
             bottom_baseline = 980
             start_y = bottom_baseline - total_title_height
 
-        sub_y = start_y - 65
+        sub_y = start_y - sub_font_size - int(title_font_size * 0.38)
 
         # 4. Render Subheading
         if show_subheading:
@@ -291,7 +293,7 @@ class TitleCardRenderer:
 
             draw_sep = has_sep and bool(sep_char)
 
-            gap = 16
+            gap = max(10, int(sub_font_size * 0.47))
             s_w = 0
             if season_part:
                 s_bbox = draw.textbbox((0, 0), season_part, font=sub_font)

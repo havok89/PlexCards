@@ -24,6 +24,8 @@ export interface Show {
   show_subheading?: number;
   subheading_format?: string;
   subheading_icon?: string;
+  title_font_size?: number;
+  subheading_font_size?: number;
   ai_prompt?: string;
   has_custom_style?: number;
 }
@@ -48,6 +50,8 @@ export interface StyleConfig {
   show_subheading: number;
   subheading_format: string;
   subheading_icon: string;
+  title_font_size: number;
+  subheading_font_size: number;
   ai_prompt?: string;
 }
 

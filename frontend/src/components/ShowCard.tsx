@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Show } from '../types';
-import { Zap, Wand2, Ban, ChevronRight } from 'lucide-react';
+import { Zap, Wand2, Ban, ChevronRight, Film } from 'lucide-react';
 
 interface ShowCardProps {
   show: Show;
@@ -8,18 +8,29 @@ interface ShowCardProps {
 }
 
 export const ShowCard: React.FC<ShowCardProps> = ({ show, onClick }) => {
+  const [imgError, setImgError] = useState(false);
+
   return (
     <div
       onClick={onClick}
       className="group bg-dark-900 border border-gray-800 hover:border-brand-500/60 rounded-xl overflow-hidden cursor-pointer transition transform hover:-translate-y-1 shadow-lg hover:shadow-brand-500/10 flex flex-col"
     >
       <div className="relative aspect-[2/3] bg-dark-850 overflow-hidden">
-        <img
-          src={show.poster_url || 'https://via.placeholder.com/300x450?text=No+Poster'}
-          alt={show.title}
-          className="w-full h-full object-cover transition duration-300 group-hover:scale-105"
-          loading="lazy"
-        />
+        {show.poster_url && !imgError ? (
+          <img
+            src={show.poster_url}
+            alt={show.title}
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover transition duration-300 group-hover:scale-105"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-dark-800 to-dark-900 p-4 text-center border border-gray-800/60">
+            <Film className="w-8 h-8 text-gray-600 mb-2 group-hover:text-brand-500 transition" />
+            <span className="text-xs font-semibold text-gray-400 line-clamp-2 px-1">{show.title}</span>
+            {show.year && <span className="text-[10px] text-gray-500 mt-1">{show.year}</span>}
+          </div>
+        )}
 
         {/* Mode Pill Badge */}
         <div className="absolute top-2 left-2">

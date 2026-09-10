@@ -46,6 +46,8 @@ def init_db():
         subheading_icon TEXT DEFAULT 'dot', -- 'dot', 'delta', 'dash', 'none'
         ai_prompt TEXT,
         has_custom_style INTEGER DEFAULT 0,
+        title_font_size INTEGER DEFAULT 82,
+        subheading_font_size INTEGER DEFAULT 34,
         FOREIGN KEY(rating_key) REFERENCES shows(rating_key) ON DELETE CASCADE
     )
     """)
@@ -57,6 +59,10 @@ def init_db():
         cursor.execute("ALTER TABLE show_styles ADD COLUMN text_position TEXT DEFAULT 'left_center'")
     if "has_custom_style" not in columns:
         cursor.execute("ALTER TABLE show_styles ADD COLUMN has_custom_style INTEGER DEFAULT 0")
+    if "title_font_size" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN title_font_size INTEGER DEFAULT 82")
+    if "subheading_font_size" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_font_size INTEGER DEFAULT 34")
     
     # Episode records and card status
     cursor.execute("""
@@ -162,7 +168,9 @@ def get_show(rating_key: str) -> Optional[Dict[str, Any]]:
     SELECT s.*, st.layout, st.text_position, st.font_family, st.font_color, st.subheading_color, 
            st.gradient_side, st.gradient_width_pct, st.gradient_opacity_pct, 
            st.show_subheading, st.subheading_format, st.subheading_icon, st.ai_prompt,
-           st.has_custom_style
+           st.has_custom_style,
+           COALESCE(st.title_font_size, 82) AS title_font_size,
+           COALESCE(st.subheading_font_size, 34) AS subheading_font_size
     FROM shows s
     LEFT JOIN show_styles st ON s.rating_key = st.rating_key
     WHERE s.rating_key = ?
@@ -180,6 +188,8 @@ def get_all_shows() -> List[Dict[str, Any]]:
            st.gradient_side, st.gradient_width_pct, st.gradient_opacity_pct, 
            st.show_subheading, st.subheading_format, st.subheading_icon, st.ai_prompt,
            COALESCE(st.has_custom_style, 0) AS has_custom_style,
+           COALESCE(st.title_font_size, 82) AS title_font_size,
+           COALESCE(st.subheading_font_size, 34) AS subheading_font_size,
            (SELECT COUNT(*) FROM episodes e WHERE e.show_rating_key = s.rating_key AND e.card_source = 'mediux') AS mediux_cards_count,
            (SELECT COUNT(*) FROM episodes e WHERE e.show_rating_key = s.rating_key AND e.card_source LIKE 'generator%') AS generator_cards_count
     FROM shows s
@@ -207,7 +217,8 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
     cursor.execute("""
     INSERT INTO show_styles (rating_key, layout, text_position, font_family, font_color, subheading_color, 
                              gradient_side, gradient_width_pct, gradient_opacity_pct, 
-                             show_subheading, subheading_format, subheading_icon, ai_prompt, has_custom_style)
+                             show_subheading, subheading_format, subheading_icon, ai_prompt, has_custom_style,
+                             title_font_size, subheading_font_size)
     VALUES (:rating_key, 
             COALESCE(:layout, 'standard'), 
             COALESCE(:text_position, 'left_center'), 
@@ -221,7 +232,9 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
             COALESCE(:subheading_format, 'SEASON {season_word} {icon} EPISODE {episode_word}'), 
             COALESCE(:subheading_icon, 'dot'), 
             :ai_prompt, 
-            COALESCE(:has_custom_style, 1))
+            COALESCE(:has_custom_style, 1),
+            COALESCE(:title_font_size, 82),
+            COALESCE(:subheading_font_size, 34))
     ON CONFLICT(rating_key) DO UPDATE SET
         layout = COALESCE(excluded.layout, show_styles.layout),
         text_position = COALESCE(excluded.text_position, show_styles.text_position),
@@ -235,7 +248,9 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
         subheading_format = COALESCE(excluded.subheading_format, show_styles.subheading_format),
         subheading_icon = COALESCE(excluded.subheading_icon, show_styles.subheading_icon),
         ai_prompt = COALESCE(excluded.ai_prompt, show_styles.ai_prompt),
-        has_custom_style = COALESCE(excluded.has_custom_style, 1)
+        has_custom_style = COALESCE(excluded.has_custom_style, 1),
+        title_font_size = COALESCE(excluded.title_font_size, show_styles.title_font_size),
+        subheading_font_size = COALESCE(excluded.subheading_font_size, show_styles.subheading_font_size)
     """, {
         "layout": style_data.get("layout"),
         "text_position": style_data.get("text_position"),
@@ -250,6 +265,8 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
         "subheading_icon": style_data.get("subheading_icon"),
         "ai_prompt": style_data.get("ai_prompt"),
         "has_custom_style": style_data.get("has_custom_style", 1),
+        "title_font_size": style_data.get("title_font_size"),
+        "subheading_font_size": style_data.get("subheading_font_size"),
         "rating_key": rating_key
     })
     conn.commit()

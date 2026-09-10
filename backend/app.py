@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from backend import config
-from backend.config import BASE_DIR, HOST, PORT, CUSTOM_FONTS_DIR
+from backend.config import BASE_DIR, HOST, PORT, CUSTOM_FONTS_DIR, POSTERS_DIR
 from backend.db import (
     init_db, get_all_shows, get_show, update_show_mode, update_show_style,
     get_setting, set_setting, get_all_settings, bulk_update_show_modes,
@@ -43,7 +43,7 @@ app.add_middleware(
 async def auth_middleware(request: Request, call_next):
     """Intercept requests to protect /api/ routes when ENABLE_AUTH is active."""
     path = request.url.path
-    if config.ENABLE_AUTH and path.startswith("/api/") and not path.startswith("/api/auth") and path != "/api/config":
+    if config.ENABLE_AUTH and path.startswith("/api/") and not path.startswith("/api/auth") and path != "/api/config" and not path.endswith("/poster"):
         token = request.cookies.get(SESSION_COOKIE_NAME)
         if not token:
             auth_header = request.headers.get("Authorization")
@@ -225,7 +225,65 @@ async def upload_custom_font(file: UploadFile = File(...)):
 def list_shows():
     """List all indexed TV shows with status and card statistics."""
     shows = get_all_shows()
+    for s in shows:
+        if s.get("poster_url"):
+            s["poster_url"] = f"/api/shows/{s['rating_key']}/poster"
     return {"shows": shows}
+
+@app.get("/api/shows/{rating_key}/poster")
+def get_show_poster(rating_key: str):
+    """Serve or proxy the show poster with local disk caching for reliable remote access."""
+    from fastapi.responses import FileResponse
+    import requests
+
+    poster_path = POSTERS_DIR / f"{rating_key}.jpg"
+    if poster_path.exists():
+        return FileResponse(
+            poster_path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=86400"}
+        )
+
+    show = get_show(rating_key)
+    target_url = show.get("poster_url") if show else None
+
+    # If no URL stored, try fetching directly from Plex item
+    if not target_url and sync_mgr.plex:
+        try:
+            item = sync_mgr.plex.server.fetchItem(int(rating_key))
+            target_url = item.posterUrl if hasattr(item, "posterUrl") else None
+        except Exception:
+            pass
+
+    # If still no URL, try TMDb
+    if not target_url and show and show.get("tmdb_id"):
+        try:
+            details = tmdb.get_show_details(show["tmdb_id"])
+            target_url = details.get("poster_url")
+        except Exception:
+            pass
+
+    if not target_url:
+        raise HTTPException(status_code=404, detail="Poster not found")
+
+    try:
+        r = requests.get(target_url, timeout=10)
+        if r.status_code == 200:
+            with open(poster_path, "wb") as f:
+                f.write(r.content)
+            return FileResponse(
+                poster_path,
+                media_type=r.headers.get("content-type", "image/jpeg"),
+                headers={"Cache-Control": "public, max-age=86400"}
+            )
+        else:
+            logger.warning(f"Failed to fetch poster from {target_url}: HTTP {r.status_code}")
+            raise HTTPException(status_code=r.status_code, detail="Could not fetch poster from origin")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching poster for show {rating_key}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch poster")
 
 @app.post("/api/library/scan")
 def scan_library():
@@ -239,6 +297,9 @@ def get_show_details(rating_key: str):
     show = get_show(rating_key)
     if not show:
         raise HTTPException(status_code=404, detail="Show not found")
+
+    if show.get("poster_url"):
+        show["poster_url"] = f"/api/shows/{rating_key}/poster"
 
     episodes = sync_mgr.plex.get_show_episodes(rating_key)
     tmdb_id = show.get("tmdb_id")
@@ -356,8 +417,18 @@ def match_show_tmdb(rating_key: str, payload: dict = Body(...)):
         poster_url = details.get("poster_url")
         backdrop_url = details.get("backdrop_url")
 
+    # Invalidate cached poster if TMDb match updated
+    cached_poster = POSTERS_DIR / f"{rating_key}.jpg"
+    if cached_poster.exists():
+        try:
+            cached_poster.unlink(missing_ok=True)
+        except Exception:
+            pass
+
     update_show_tmdb_id(rating_key, tmdb_id, poster_url=poster_url, backdrop_url=backdrop_url)
     updated_show = get_show(rating_key)
+    if updated_show and updated_show.get("poster_url"):
+        updated_show["poster_url"] = f"/api/shows/{rating_key}/poster"
     return {"status": "success", "show": updated_show, "tmdb_info": details}
 
 @app.post("/api/shows/{rating_key}/plex-fix-match")
@@ -421,7 +492,9 @@ def generate_preview(rating_key: str, payload: dict = Body(...)):
         "gw": style.get("gradient_width_pct"),
         "go": style.get("gradient_opacity_pct"),
         "sub": style.get("show_subheading"),
-        "sub_fmt": style.get("subheading_format")
+        "sub_fmt": style.get("subheading_format"),
+        "tfs": style.get("title_font_size", 82),
+        "sfs": style.get("subheading_font_size", 34)
     }, sort_keys=True).encode()).hexdigest()
 
     cached_preview = PREVIEWS_DIR / f"{cache_key}.jpg"

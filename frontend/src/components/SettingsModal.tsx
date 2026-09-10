@@ -135,10 +135,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-dark-900 border border-gray-800 rounded-2xl w-full max-w-xl flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm">
+      <div className="bg-dark-900 border border-gray-800 rounded-xl sm:rounded-2xl w-full max-w-xl max-h-[92dvh] sm:max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-dark-850">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-gray-800 flex items-center justify-between bg-dark-850 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-brand-500/20 text-brand-500 flex items-center justify-center font-bold">
               <Settings className="w-4 h-4" />
@@ -157,7 +157,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 space-y-6 flex-1 min-h-0 overflow-y-auto">
           {isLoading ? (
             <div className="py-12 flex flex-col items-center justify-center gap-2 text-gray-500 text-xs">
               <Loader2 className="w-6 h-6 animate-spin text-brand-500" />
@@ -174,7 +174,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       Gemini AI Styling
                     </h3>
                   </div>
-                  <span className="text-[10px] text-gray-500">Gemini 3.6 Flash</span>
+                  <span className="text-[10px] text-gray-500">Gemini 3.5 Flash Lite</span>
                 </div>
 
                 <div className="flex items-start justify-between gap-4 pt-1">
