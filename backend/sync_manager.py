@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import requests
 
-from backend.db import init_db, get_db, upsert_show, get_show, get_all_shows
+from backend.db import init_db, get_db, upsert_show, get_show, get_all_shows, get_setting
 from backend.plex_client import PlexClient
 from backend.tmdb_client import TMDbClient
 from backend.mediux_client import MediuxClient
@@ -47,92 +47,201 @@ class SyncManager:
         logger.info("Library index complete.")
         return len(shows)
 
-    def sync_show(self, rating_key: str, force: bool = False) -> Dict[str, Any]:
-        """Apply cards for a show according to its mode and style."""
+    def sync_show_generator(self, rating_key: str, force_all: bool = True, force_live: bool = False):
+        """Generator that yields progress events while updating cards and posters for a show."""
         show = get_show(rating_key)
         if not show:
-            raise ValueError(f"Show with rating_key {rating_key} not found")
+            yield {"type": "error", "message": f"Show with rating_key {rating_key} not found"}
+            return
 
         mode = show.get("mode", "auto")
         if mode == "ignored":
-            return {"status": "skipped", "message": "Show is set to ignored"}
+            yield {"type": "done", "result": {"status": "skipped", "message": "Show is set to ignored"}}
+            return
 
         episodes = self.plex.get_show_episodes(rating_key)
         tmdb_id = show.get("tmdb_id")
-        
-        updated_count = 0
-        card_sources = {}
+        is_test = TEST_MODE and not force_live
+
+        # Fetch existing card statuses from DB for 'missing only' filtering
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT rating_key, card_source FROM episodes WHERE show_rating_key = ?", (rating_key,))
+        existing_cards = {r["rating_key"]: r["card_source"] for r in cursor.fetchall()}
+        conn.close()
+
+        # Calculate episodes to process
+        target_episodes = [
+            ep for ep in episodes
+            if force_all or existing_cards.get(ep["rating_key"]) in (None, 'none', '')
+        ]
 
         # ----------------------------------------------------
         # MODE 1: GENERATOR ONLY (Never check MediUX)
         # ----------------------------------------------------
         if mode == "generator_only":
-            logger.info(f"Running Generator-Only mode for '{show['title']}'...")
-            for ep in episodes:
+            logger.info(f"Running Generator-Only mode for '{show['title']}' (force_all={force_all}, live={not is_test})...")
+            total_items = len(target_episodes)
+            updated_count = 0
+            current_item = 0
+
+            if total_items == 0:
+                yield {"type": "progress", "current": 0, "total": 0, "label": "", "message": "All cards are already up to date."}
+                yield {
+                    "type": "done",
+                    "result": {
+                        "status": "success",
+                        "test_mode": is_test,
+                        "force_live": force_live,
+                        "force_all": force_all,
+                        "mode": mode,
+                        "updated_cards": 0,
+                        "updated_season_posters": 0,
+                        "message": "All cards are already up to date."
+                    }
+                }
+                return
+
+            for ep in target_episodes:
+                current_item += 1
+                s_num = ep["season_number"]
+                e_num = ep["episode_number"]
+                ep_label = f"S{s_num:02d}E{e_num:02d}"
+
+                yield {
+                    "type": "progress",
+                    "current": current_item,
+                    "total": total_items,
+                    "label": ep_label,
+                    "message": f"Updating {current_item} of {total_items} ({ep_label})"
+                }
+
                 ep_key = ep["rating_key"]
-                still_file = self.tmdb.get_episode_still(tmdb_id, ep["season_number"], ep["episode_number"])
+                still_file = self.tmdb.get_episode_still(tmdb_id, s_num, e_num)
                 if not still_file:
                     continue
 
-                # Render card
                 card_img = self.renderer.render(
                     base_image_path=still_file,
                     episode_title=ep["title"],
-                    season_num=ep["season_number"],
-                    episode_num=ep["episode_number"],
+                    season_num=s_num,
+                    episode_num=e_num,
                     style_config=show
                 )
 
-                # Save temporary file and upload
                 clean_title = "".join(c for c in show["title"] if c.isalnum() or c in (" ", "-", "_")).strip()
-                if TEST_MODE:
+                if is_test:
                     show_test_dir = TEST_OUTPUT_DIR / clean_title
                     show_test_dir.mkdir(parents=True, exist_ok=True)
-                    out_path = show_test_dir / f"S{ep['season_number']:02d}E{ep['episode_number']:02d}_{ep['title'][:30]}.jpg"
+                    out_path = show_test_dir / f"S{s_num:02d}E{e_num:02d}_{ep['title'][:30]}.jpg"
                     card_img.save(out_path, quality=95)
                     logger.info(f"🧪 [TEST MODE] Saved generated card to {out_path}")
 
                 with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                     card_img.save(tmp.name, quality=95)
-                    self.plex.upload_episode_card(ep_key, tmp.name)
+                    self.plex.upload_episode_card(ep_key, tmp.name, force_live=force_live)
                     Path(tmp.name).unlink(missing_ok=True)
 
                 self._update_episode_card_status(ep_key, "generator_preset")
                 updated_count += 1
-                card_sources[ep_key] = "generator_preset"
 
-            return {
-                "status": "success",
-                "test_mode": TEST_MODE,
-                "mode": mode,
-                "updated_cards": updated_count,
-                "message": "🧪 Test Mode: Rendered cards locally without uploading to Plex." if TEST_MODE else "Applied cards to Plex."
+            yield {
+                "type": "done",
+                "result": {
+                    "status": "success",
+                    "test_mode": is_test,
+                    "force_live": force_live,
+                    "force_all": force_all,
+                    "mode": mode,
+                    "updated_cards": updated_count,
+                    "updated_season_posters": 0,
+                    "message": f"🧪 Test Mode: Rendered {updated_count} cards locally without uploading to Plex." if is_test else f"Successfully uploaded {updated_count} cards to Plex!"
+                }
             }
+            return
 
         # ----------------------------------------------------
         # MODE 2: AUTO (Check MediUX for full season sets, fallback to generator)
         # ----------------------------------------------------
-        logger.info(f"Running Auto mode for '{show['title']}'...")
+        logger.info(f"Running Auto mode for '{show['title']}' (force_all={force_all}, live={not is_test})...")
         required_seasons = list(set(ep["season_number"] for ep in episodes))
         
         # Check MediUX for matching sets
         matched_set = None
         if tmdb_id:
-            matched_set = self.mediux.find_best_matching_set(tmdb_id, required_seasons)
+            all_sets = self.mediux.get_show_sets(tmdb_id)
+            if show.get("mediux_set_url"):
+                target = str(show["mediux_set_url"]).strip()
+                for s in all_sets:
+                    if s.get("set_url") == target or s.get("id") == target or f"/sets/{s.get('id')}" in target:
+                        matched_set = s
+                        logger.info(f"🎯 Using user-selected MediUX set {s['id']} by {s['creator']} for '{show['title']}'")
+                        break
+            if not matched_set:
+                pref_str = get_setting("preferred_mediux_creators", "")
+                pref_creators = [p.strip() for p in pref_str.split(",") if p.strip()]
+                matched_set = self.mediux.find_best_matching_set(tmdb_id, required_seasons, preferred_creators=pref_creators)
 
-        for ep in episodes:
+        # Pre-check target season posters
+        target_seasons = []
+        if matched_set and matched_set.get("season_posters"):
+            try:
+                plex_seasons = self.plex.get_show_seasons(rating_key)
+                for season in plex_seasons:
+                    s_num = season["season_number"]
+                    if matched_set["season_posters"].get(str(s_num)) or matched_set["season_posters"].get(s_num):
+                        target_seasons.append(season)
+            except Exception as e:
+                logger.warning(f"Could not check seasons for '{show['title']}': {e}")
+
+        total_items = len(target_episodes) + len(target_seasons)
+        current_item = 0
+        updated_count = 0
+        updated_season_posters = 0
+
+        if total_items == 0:
+            yield {"type": "progress", "current": 0, "total": 0, "label": "", "message": "All cards are already up to date."}
+            yield {
+                "type": "done",
+                "result": {
+                    "status": "success",
+                    "test_mode": is_test,
+                    "force_live": force_live,
+                    "force_all": force_all,
+                    "mode": mode,
+                    "mediux_set_used": matched_set["id"] if matched_set else None,
+                    "updated_cards": 0,
+                    "updated_season_posters": 0,
+                    "message": "All cards are already up to date."
+                }
+            }
+            return
+
+        for ep in target_episodes:
+            current_item += 1
             ep_key = ep["rating_key"]
             s_num = ep["season_number"]
             e_num = ep["episode_number"]
+            ep_label = f"S{s_num:02d}E{e_num:02d}"
+
+            yield {
+                "type": "progress",
+                "current": current_item,
+                "total": total_items,
+                "label": ep_label,
+                "message": f"Updating {current_item} of {total_items} ({ep_label})"
+            }
             
             mediux_card_url = None
-            if matched_set and (s_num, e_num) in matched_set.get("title_cards", {}):
-                mediux_card_url = matched_set["title_cards"][(s_num, e_num)]
+            if matched_set:
+                cards = matched_set.get("title_cards", {})
+                mediux_card_url = cards.get(f"{s_num}_{e_num}") or cards.get((s_num, e_num))
+
+            clean_title = "".join(c for c in show["title"] if c.isalnum() or c in (" ", "-", "_")).strip()
 
             if mediux_card_url:
                 # Apply official MediUX card
-                clean_title = "".join(c for c in show["title"] if c.isalnum() or c in (" ", "-", "_")).strip()
-                if TEST_MODE:
+                if is_test:
                     show_test_dir = TEST_OUTPUT_DIR / clean_title
                     show_test_dir.mkdir(parents=True, exist_ok=True)
                     out_path = show_test_dir / f"S{s_num:02d}E{e_num:02d}_mediux.jpg"
@@ -146,10 +255,9 @@ class SyncManager:
                         except Exception as e:
                             logger.warning(f"Could not save test MediUX card: {e}")
 
-                self.plex.upload_episode_card(ep_key, mediux_card_url)
+                self.plex.upload_episode_card(ep_key, mediux_card_url, force_live=force_live)
                 self._update_episode_card_status(ep_key, "mediux", mediux_card_url)
                 updated_count += 1
-                card_sources[ep_key] = "mediux"
             else:
                 # Fallback: Render clean interim card using preset
                 still_file = self.tmdb.get_episode_still(tmdb_id, s_num, e_num)
@@ -161,8 +269,7 @@ class SyncManager:
                         episode_num=e_num,
                         style_config=show
                     )
-                    clean_title = "".join(c for c in show["title"] if c.isalnum() or c in (" ", "-", "_")).strip()
-                    if TEST_MODE:
+                    if is_test:
                         show_test_dir = TEST_OUTPUT_DIR / clean_title
                         show_test_dir.mkdir(parents=True, exist_ok=True)
                         out_path = show_test_dir / f"S{s_num:02d}E{e_num:02d}_interim.jpg"
@@ -171,21 +278,70 @@ class SyncManager:
 
                     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                         card_img.save(tmp.name, quality=95)
-                        self.plex.upload_episode_card(ep_key, tmp.name)
+                        self.plex.upload_episode_card(ep_key, tmp.name, force_live=force_live)
                         Path(tmp.name).unlink(missing_ok=True)
 
                     self._update_episode_card_status(ep_key, "generator_interim")
                     updated_count += 1
-                    card_sources[ep_key] = "generator_interim"
 
-        return {
-            "status": "success",
-            "test_mode": TEST_MODE,
-            "mode": mode,
-            "mediux_set_used": matched_set["id"] if matched_set else None,
-            "updated_cards": updated_count,
-            "message": "🧪 Test Mode: Rendered and verified cards locally without uploading to Plex." if TEST_MODE else "Applied cards to Plex."
+        # Pull Season Posters if present in MediUX set
+        if target_seasons:
+            clean_title = "".join(c for c in show["title"] if c.isalnum() or c in (" ", "-", "_")).strip()
+            for season in target_seasons:
+                current_item += 1
+                s_num = season["season_number"]
+                season_label = f"Season {s_num} Poster"
+
+                yield {
+                    "type": "progress",
+                    "current": current_item,
+                    "total": total_items,
+                    "label": season_label,
+                    "message": f"Updating {current_item} of {total_items} ({season_label})"
+                }
+
+                poster_url = matched_set["season_posters"].get(str(s_num)) or matched_set["season_posters"].get(s_num)
+                if poster_url:
+                    if is_test:
+                        show_test_dir = TEST_OUTPUT_DIR / clean_title
+                        show_test_dir.mkdir(parents=True, exist_ok=True)
+                        out_path = show_test_dir / f"Season_{s_num:02d}_poster.jpg"
+                        if not out_path.exists():
+                            try:
+                                r = requests.get(poster_url, timeout=10)
+                                if r.status_code == 200:
+                                    with open(out_path, "wb") as f:
+                                        f.write(r.content)
+                                    logger.info(f"🧪 [TEST MODE] Saved season {s_num} poster to {out_path}")
+                            except Exception as e:
+                                logger.warning(f"Could not save test season poster: {e}")
+
+                    self.plex.upload_season_poster(season["rating_key"], poster_url, force_live=force_live)
+                    updated_season_posters += 1
+
+        poster_msg = f" and {updated_season_posters} season posters" if updated_season_posters > 0 else ""
+        yield {
+            "type": "done",
+            "result": {
+                "status": "success",
+                "test_mode": is_test,
+                "force_live": force_live,
+                "force_all": force_all,
+                "mode": mode,
+                "mediux_set_used": matched_set["id"] if matched_set else None,
+                "updated_cards": updated_count,
+                "updated_season_posters": updated_season_posters,
+                "message": f"🧪 Test Mode: Rendered {updated_count} cards{poster_msg} locally without uploading to Plex." if is_test else f"Successfully uploaded {updated_count} cards{poster_msg} to Plex!"
+            }
         }
+
+    def sync_show(self, rating_key: str, force_all: bool = True, force_live: bool = False) -> Dict[str, Any]:
+        """Apply cards for a show according to its mode and style (synchronous wrapper)."""
+        final_result = None
+        for event in self.sync_show_generator(rating_key, force_all=force_all, force_live=force_live):
+            if event.get("type") == "done":
+                final_result = event.get("result")
+        return final_result or {"status": "error", "message": "No result returned from sync generator"}
 
     def _update_episode_card_status(self, episode_rating_key: str, source: str, card_url: Optional[str] = None):
         conn = get_db()

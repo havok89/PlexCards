@@ -71,14 +71,29 @@ Return ONLY a JSON object with these exact keys:
             data = json.loads(raw_text)
             return data
         except Exception as e:
-            logger.error(f"Gemini style suggestion failed: {e}")
+            err_str = str(e)
+            logger.error(f"Gemini style suggestion failed: {err_str}")
+
+            is_503 = any(token in err_str for token in ["503", "UNAVAILABLE", "high demand", "Service Unavailable"])
+            is_quota = any(token in err_str for token in ["429", "RESOURCE_EXHAUSTED", "quota"])
+
+            if is_503:
+                user_msg = "Gemini 3.6 Flash is currently experiencing high demand (503 Service Unavailable). Please try again in a few moments."
+            elif is_quota:
+                user_msg = "Gemini API rate limit reached (429 Quota Exceeded). Please wait a moment before trying again."
+            else:
+                user_msg = f"Gemini style suggestion failed: {err_str[:150]}"
+
             return {
+                "error": user_msg,
+                "is_unavailable": is_503,
                 "font_family": "Oswald",
                 "font_color": "#F4B84D",
                 "subheading_color": "#E5A93C",
                 "gradient_side": "left",
                 "gradient_width_pct": 48,
                 "gradient_opacity_pct": 90,
-                "subheading_icon": "dot",
-                "reasoning": f"Fallback applied due to error: {e}"
+                "subheading_icon": "•",
+                "reasoning": user_msg
             }
+

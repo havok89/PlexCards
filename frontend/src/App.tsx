@@ -5,6 +5,8 @@ import { Navbar } from './components/Navbar';
 import { FilterBar } from './components/FilterBar';
 import { ShowCard } from './components/ShowCard';
 import { ShowStudioModal } from './components/ShowStudioModal';
+import { SettingsModal } from './components/SettingsModal';
+import { useToast } from './context/ToastContext';
 import { Tv, Loader2 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -19,6 +21,7 @@ export const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterMode, setFilterMode] = useState<string>('all');
   const [selectedShow, setSelectedShow] = useState<Show | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
   const loadData = async () => {
     try {
@@ -39,14 +42,24 @@ export const App: React.FC = () => {
     loadData();
   }, []);
 
+  const { showToast } = useToast();
+
   const handleScan = async () => {
     setIsScanning(true);
     try {
       const res = await api.scanLibrary();
-      alert(`Plex scan complete! Indexed ${res.indexed_shows} shows.`);
+      showToast({
+        type: 'success',
+        title: 'Scan Complete',
+        message: `Indexed ${res.indexed_shows} TV shows from your Plex server.`
+      });
       await loadData();
     } catch (e) {
-      alert('Plex library scan failed: ' + e);
+      showToast({
+        type: 'error',
+        title: 'Scan Failed',
+        message: String(e)
+      });
     } finally {
       setIsScanning(false);
     }
@@ -67,6 +80,7 @@ export const App: React.FC = () => {
         onSearchChange={setSearchQuery}
         onScan={handleScan}
         isScanning={isScanning}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       <FilterBar
@@ -120,6 +134,15 @@ export const App: React.FC = () => {
           testMode={config.test_mode}
           onClose={() => setSelectedShow(null)}
           onShowUpdated={loadData}
+        />
+      )}
+
+      {isSettingsOpen && (
+        <SettingsModal
+          onClose={() => setIsSettingsOpen(false)}
+          onShowsUpdated={loadData}
+          testMode={config.test_mode}
+          tvLibrary={config.tv_library}
         />
       )}
     </div>

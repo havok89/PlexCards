@@ -37,7 +37,11 @@ export const api = {
     show: Show;
     episodes: Episode[];
     available_sets: MediuxSet[];
+    auto_mediux_set_id?: string | null;
+    preferred_creators?: string[];
     tmdb_info?: any;
+    initial_ai_generated?: boolean;
+    ai_error?: string | null;
   }> {
     const res = await fetch(`/api/shows/${ratingKey}`);
     return res.json();
@@ -73,14 +77,69 @@ export const api = {
     return res.blob();
   },
 
-  async applyCards(ratingKey: string): Promise<{
+  async applyCards(
+    ratingKey: string,
+    options?: { force_all?: boolean; force_live?: boolean },
+    onProgress?: (progress: { current: number; total: number; label?: string; message?: string }) => void
+  ): Promise<{
     status: string;
     test_mode?: boolean;
+    force_live?: boolean;
+    force_all?: boolean;
     updated_cards: number;
+    updated_season_posters?: number;
     message: string;
   }> {
-    const res = await fetch(`/api/shows/${ratingKey}/apply`, { method: 'POST' });
-    return res.json();
+    const res = await fetch(`/api/shows/${ratingKey}/apply-stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {})
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to apply cards');
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      throw new Error('Streaming not supported in browser');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalResult: any = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const data = JSON.parse(line);
+          if (data.type === 'progress' && onProgress) {
+            onProgress({
+              current: data.current,
+              total: data.total,
+              label: data.label,
+              message: data.message
+            });
+          } else if (data.type === 'done') {
+            finalResult = data.result;
+          } else if (data.type === 'error') {
+            throw new Error(data.message || 'Error occurred while updating');
+          }
+        } catch (err) {
+          console.error('Error parsing progress line:', err);
+        }
+      }
+    }
+
+    return finalResult || { status: 'success', updated_cards: 0, message: 'Completed' };
   },
 
   async askAi(ratingKey: string, prompt: string): Promise<any> {
@@ -88,6 +147,33 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({ detail: 'Failed to generate style with Gemini' }));
+      throw new Error(errData.detail || `AI suggestion failed with status ${res.status}`);
+    }
+    return res.json();
+  },
+
+  async getSettings(): Promise<{ settings: Record<string, string> }> {
+    const res = await fetch('/api/settings');
+    return res.json();
+  },
+
+  async updateSettings(settings: Record<string, any>): Promise<any> {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    });
+    return res.json();
+  },
+
+  async bulkSetMode(mode: string): Promise<{ status: string; updated_count: number; mode: string }> {
+    const res = await fetch('/api/shows/bulk-mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode })
     });
     return res.json();
   }

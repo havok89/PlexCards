@@ -58,6 +58,8 @@ export interface MediuxSet {
   total_cards: number;
   seasons_covered: number[];
   title_cards: Record<string, string>;
+  season_posters?: Record<string, string>;
+  poster_url?: string;
 }
 
 export interface AppConfig {

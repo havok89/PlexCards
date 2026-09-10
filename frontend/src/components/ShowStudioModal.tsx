@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Show, Episode, StyleConfig, MediuxSet } from '../types';
 import { api } from '../api';
+import { useToast } from '../context/ToastContext';
 import {
   X,
   Sliders,
@@ -12,13 +13,18 @@ import {
   FlaskConical,
   ExternalLink,
   CheckCircle,
+  Check,
+  RotateCcw,
   Loader2,
   LayoutTemplate,
-  Upload
+  Upload,
+  Star
 } from 'lucide-react';
 
 // Global cache for preview object URLs across modal opens
 const previewBlobCache = new Map<string, string>();
+// Global cache for show MediUX sets across modal opens
+const mediuxSetsCache = new Map<string, MediuxSet[]>();
 
 const normalizeSeparator = (sep?: string): string => {
   if (!sep || sep === 'none') return '';
@@ -43,17 +49,30 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   const [activeShow, setActiveShow] = useState<Show>(show);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [isEpisodesLoading, setIsEpisodesLoading] = useState<boolean>(true);
-  const [availableSets, setAvailableSets] = useState<MediuxSet[]>([]);
+  const [availableSets, setAvailableSets] = useState<MediuxSet[]>(() => {
+    return mediuxSetsCache.get(show.rating_key) || [];
+  });
+  const [isSetsLoading, setIsSetsLoading] = useState<boolean>(() => {
+    return !mediuxSetsCache.has(show.rating_key);
+  });
+  const [autoMediuxSetId, setAutoMediuxSetId] = useState<string | null>(null);
+  const [preferredCreators, setPreferredCreators] = useState<string[]>([]);
   const [selectedEpIndex, setSelectedEpIndex] = useState<number>(0);
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
   const [isApplying, setIsApplying] = useState<boolean>(false);
+  const [applyProgress, setApplyProgress] = useState<{ current: number; total: number; label?: string } | null>(null);
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
   const [aiReasoning, setAiReasoning] = useState<string>(show.ai_prompt || '');
   const [availableFonts, setAvailableFonts] = useState<{ name: string; type: string; filename: string }[]>([]);
   const [isUploadingFont, setIsUploadingFont] = useState<boolean>(false);
+  const [isSavedJustNow, setIsSavedJustNow] = useState<boolean>(false);
+  const [updateScope, setUpdateScope] = useState<'all' | 'missing'>('all');
+  const [isForceLive, setIsForceLive] = useState<boolean>(false);
+  const [previewTab, setPreviewTab] = useState<'mediux' | 'generator'>('mediux');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { showToast } = useToast();
 
   const [styleConfig, setStyleConfig] = useState<StyleConfig>({
     layout: show.layout || 'standard',
@@ -72,6 +91,9 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   useEffect(() => {
     let isMounted = true;
     setIsEpisodesLoading(true);
+    if (!mediuxSetsCache.has(show.rating_key)) {
+      setIsSetsLoading(true);
+    }
 
     api.getFonts().then((fonts) => {
       if (isMounted) setAvailableFonts(fonts);
@@ -81,8 +103,21 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
       if (!isMounted) return;
       setActiveShow(data.show);
       setEpisodes(data.episodes || []);
-      setAvailableSets(data.available_sets || []);
+      const sets = data.available_sets || [];
+      mediuxSetsCache.set(show.rating_key, sets);
+      setAvailableSets(sets);
+      setAutoMediuxSetId(data.auto_mediux_set_id || null);
+      setPreferredCreators(data.preferred_creators || []);
       setIsEpisodesLoading(false);
+      setIsSetsLoading(false);
+
+      if (data.ai_error) {
+        showToast({
+          type: 'warning',
+          title: 'Gemini AI Temporarily Unavailable',
+          message: data.ai_error
+        });
+      }
 
       // If backend auto-suggested a style on first load, apply it to state
       if (data.show) {
@@ -102,6 +137,10 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           setAiReasoning(data.show.ai_prompt);
         }
       }
+
+      if (data.initial_ai_generated) {
+        onShowUpdated();
+      }
     });
     return () => {
       isMounted = false;
@@ -118,9 +157,17 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
       const updatedFonts = await api.getFonts();
       setAvailableFonts(updatedFonts);
       setStyleConfig((prev) => ({ ...prev, font_family: res.font_name }));
-      alert(`✓ Custom font "${res.font_name}" uploaded and selected!`);
+      showToast({
+        type: 'success',
+        title: 'Font Uploaded',
+        message: `Custom font "${res.font_name}" uploaded and selected!`
+      });
     } catch (err) {
-      alert('Font upload failed: ' + err);
+      showToast({
+        type: 'error',
+        title: 'Font Upload Failed',
+        message: String(err)
+      });
     } finally {
       setIsUploadingFont(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -170,8 +217,83 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
 
   const handleModeChange = async (newMode: 'auto' | 'generator_only' | 'ignored') => {
     setActiveShow((prev) => ({ ...prev, mode: newMode }));
-    await api.setMode(activeShow.rating_key, newMode);
+    await api.setMode(activeShow.rating_key, newMode, activeShow.mediux_set_url);
     onShowUpdated();
+  };
+
+  const handleSelectSet = async (selectedSet: MediuxSet | null) => {
+    const newUrl = selectedSet ? selectedSet.set_url : undefined;
+    setActiveShow((prev) => ({ ...prev, mediux_set_url: newUrl }));
+    try {
+      await api.setMode(activeShow.rating_key, activeShow.mode, newUrl);
+      if (selectedSet) {
+        showToast({
+          type: 'success',
+          title: 'MediUX Set Selected',
+          message: `Locked to MediUX set by ${selectedSet.creator}`
+        });
+      } else {
+        showToast({
+          type: 'info',
+          title: 'Reset to Auto',
+          message: 'Now using automatic best matching MediUX set'
+        });
+      }
+      onShowUpdated();
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Error',
+        message: err.message || 'Failed to update selected set'
+      });
+    }
+  };
+
+  const handleTogglePreferredCreator = async (creatorName: string) => {
+    const isPref = preferredCreators.some(
+      (c) => c.toLowerCase() === creatorName.toLowerCase()
+    );
+    let updated: string[];
+    if (isPref) {
+      updated = preferredCreators.filter(
+        (c) => c.toLowerCase() !== creatorName.toLowerCase()
+      );
+    } else {
+      updated = [...preferredCreators, creatorName];
+    }
+    setPreferredCreators(updated);
+
+    try {
+      await api.updateSettings({
+        preferred_mediux_creators: updated.join(', ')
+      });
+      showToast({
+        type: 'success',
+        title: isPref ? 'Creator Preference Removed' : 'Creator Set as Preferred',
+        message: isPref
+          ? `Removed "${creatorName}" from preferred creators.`
+          : `Added "${creatorName}" to preferred creators. Sets by ${creatorName} will now be prioritized in Auto mode.`
+      });
+
+      // If in auto mode without manual override, re-evaluate auto-selection
+      if (!activeShow.mediux_set_url && availableSets.length > 0) {
+        const cleanPrefs = updated.map((c) => c.trim().toLowerCase());
+        const prefSet = availableSets.find((s) =>
+          cleanPrefs.includes((s.creator || '').trim().toLowerCase())
+        );
+        if (prefSet) {
+          setAutoMediuxSetId(prefSet.id);
+        } else if (availableSets[0]) {
+          setAutoMediuxSetId(availableSets[0].id);
+        }
+      }
+    } catch (err) {
+      showToast({
+        type: 'error',
+        title: 'Save Failed',
+        message: String(err)
+      });
+    }
   };
 
   const applyPreset = (preset: 'cinematic' | 'clean_bottom') => {
@@ -218,42 +340,150 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         }));
       }
       setAiReasoning(suggestion.reasoning || '');
-    } catch (err) {
-      alert('AI styling error: ' + err);
+      showToast({
+        type: 'success',
+        title: 'Style Suggested',
+        message: `Gemini recommended "${suggestion.font_family}" typography.`
+      });
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      showToast({
+        type: 'error',
+        title: 'Gemini AI Error',
+        message: msg
+      });
+      setAiReasoning(`❌ ${msg}`);
     } finally {
       setIsAiLoading(false);
     }
   };
 
   const handleSaveStyle = async () => {
-    await api.saveStyle(activeShow.rating_key, {
-      ...styleConfig,
-      ai_prompt: aiReasoning
-    });
-    alert(`Style preset saved for "${activeShow.title}".`);
-    onShowUpdated();
+    try {
+      await api.saveStyle(activeShow.rating_key, {
+        ...styleConfig,
+        ai_prompt: aiReasoning
+      });
+      setIsSavedJustNow(true);
+      setTimeout(() => setIsSavedJustNow(false), 2500);
+      showToast({
+        type: 'success',
+        title: 'Preset Saved',
+        message: `Title card style preset saved for "${activeShow.title}".`
+      });
+      onShowUpdated();
+    } catch (err) {
+      showToast({
+        type: 'error',
+        title: 'Save Failed',
+        message: String(err)
+      });
+    }
   };
 
   const handleApply = async () => {
     setIsApplying(true);
+    setApplyProgress(null);
     try {
-      const res = await api.applyCards(activeShow.rating_key);
+      // 1. Auto-save current styling first so preview matches what gets generated
+      await api.saveStyle(activeShow.rating_key, {
+        ...styleConfig,
+        ai_prompt: aiReasoning
+      });
+
+      // 2. Apply cards with selected scope and mode, tracking progress
+      const res = await api.applyCards(
+        activeShow.rating_key,
+        {
+          force_all: updateScope === 'all',
+          force_live: isForceLive
+        },
+        (progress) => {
+          setApplyProgress(progress);
+        }
+      );
+
+      const posterNote = res.updated_season_posters ? ` and ${res.updated_season_posters} season posters` : '';
       if (res.test_mode) {
-        alert(
-          `🧪 Test Mode Active: Rendered ${res.updated_cards} cards locally into cache/test_output/. No changes were sent to Plex.`
-        );
+        showToast({
+          type: 'info',
+          title: '🧪 Test Mode Simulation',
+          message: `Rendered ${res.updated_cards} cards${posterNote} locally to cache/test_output/. Check 'Push Live to Plex' to upload.`
+        });
       } else {
-        alert(`Success! Updated ${res.updated_cards} cards in Plex.`);
+        showToast({
+          type: 'success',
+          title: 'Plex Updated',
+          message: `Successfully updated ${res.updated_cards} episode cards${posterNote} in Plex!`
+        });
       }
       onShowUpdated();
     } catch (e) {
-      alert('Failed to apply cards: ' + e);
+      showToast({
+        type: 'error',
+        title: 'Update Failed',
+        message: String(e)
+      });
     } finally {
       setIsApplying(false);
+      setApplyProgress(null);
     }
   };
 
   const currentEp = episodes[selectedEpIndex];
+
+  // Determine which set ID is currently selected (manual choice or auto-pick)
+  const selectedSetId = activeShow.mediux_set_url
+    ? availableSets.find(
+        (s) =>
+          s.set_url === activeShow.mediux_set_url ||
+          (s.id && activeShow.mediux_set_url?.includes(s.id))
+      )?.id
+    : (autoMediuxSetId || (availableSets.length > 0 ? availableSets[0].id : null));
+
+  // Sort sets: The active selected set is ALWAYS at the top (index 0),
+  // followed by sets from preferred creators, then total card count descending.
+  const sortedSets = useMemo(() => {
+    if (!availableSets || availableSets.length <= 1) return availableSets;
+
+    return [...availableSets].sort((a, b) => {
+      const aIsSelected = a.id === selectedSetId;
+      const bIsSelected = b.id === selectedSetId;
+      if (aIsSelected && !bIsSelected) return -1;
+      if (!aIsSelected && bIsSelected) return 1;
+
+      const aIsPref = preferredCreators.some(
+        (c) => c.toLowerCase() === (a.creator || '').toLowerCase()
+      );
+      const bIsPref = preferredCreators.some(
+        (c) => c.toLowerCase() === (b.creator || '').toLowerCase()
+      );
+      if (aIsPref && !bIsPref) return -1;
+      if (!aIsPref && bIsPref) return 1;
+
+      return (b.total_cards || 0) - (a.total_cards || 0);
+    });
+  }, [availableSets, selectedSetId, preferredCreators]);
+
+  // Active MediUX set (for preview and rendering)
+  const activeMediuxSet =
+    activeShow.mode === 'auto' && sortedSets.length > 0
+      ? sortedSets.find((s) => s.id === selectedSetId) || sortedSets[0]
+      : null;
+
+  // Title card from active MediUX set for this episode
+  const currentEpMediuxCardUrl =
+    activeMediuxSet && currentEp
+      ? activeMediuxSet.title_cards?.[`${currentEp.season_number}_${currentEp.episode_number}`]
+      : null;
+
+  const isShowingMediux = Boolean(
+    activeShow.mode === 'auto' &&
+    currentEpMediuxCardUrl &&
+    previewTab === 'mediux'
+  );
+
+  const activeDisplayUrl = isShowingMediux ? currentEpMediuxCardUrl : previewUrl;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -274,29 +504,95 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleApply}
-              disabled={isApplying}
-              className={`${
-                testMode ? 'bg-amber-500 hover:bg-amber-600' : 'bg-brand-500 hover:bg-brand-600'
-              } disabled:opacity-50 text-dark-950 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition shadow-md`}
-            >
-              {testMode ? (
-                <FlaskConical className="w-4 h-4" />
-              ) : (
-                <CheckCircle className={`w-4 h-4 ${isApplying ? 'animate-bounce' : ''}`} />
+          <div className="flex items-center flex-wrap gap-2.5">
+            {/* Scope Toggle: All vs Missing */}
+            <div className="flex items-center bg-dark-800 border border-gray-700 rounded-lg p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setUpdateScope('all')}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
+                  updateScope === 'all'
+                    ? 'bg-brand-500 text-dark-950 font-bold shadow-sm'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+                title="Update and overwrite cards for all episodes"
+              >
+                All Episodes
+              </button>
+              <button
+                type="button"
+                onClick={() => setUpdateScope('missing')}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
+                  updateScope === 'missing'
+                    ? 'bg-brand-500 text-dark-950 font-bold shadow-sm'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+                title="Only generate/download cards for episodes that are missing title cards"
+              >
+                Missing Only
+              </button>
+            </div>
+
+            {/* If TEST_MODE is active, allow user to toggle Force Live */}
+            {testMode && (
+              <label className="flex items-center gap-1.5 text-xs text-amber-400 cursor-pointer bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-lg hover:bg-amber-500/15 transition select-none">
+                <input
+                  type="checkbox"
+                  checked={isForceLive}
+                  onChange={(e) => setIsForceLive(e.target.checked)}
+                  className="rounded text-amber-500 focus:ring-0 cursor-pointer"
+                />
+                <span className="font-semibold text-[11px]">Push Live to Plex</span>
+              </label>
+            )}
+
+            {/* Apply / Update Button with Dynamic Progress */}
+            <div className="flex flex-col gap-1 min-w-[190px]">
+              <button
+                type="button"
+                onClick={handleApply}
+                disabled={isApplying}
+                className={`${
+                  testMode && !isForceLive
+                    ? 'bg-amber-500 hover:bg-amber-600 text-dark-950'
+                    : 'bg-brand-500 hover:bg-brand-600 text-dark-950'
+                } disabled:opacity-50 font-bold px-4 py-2 rounded-lg text-xs flex items-center justify-center gap-2 transition shadow-md w-full`}
+              >
+                {isApplying ? (
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                ) : testMode && !isForceLive ? (
+                  <FlaskConical className="w-4 h-4 shrink-0" />
+                ) : (
+                  <CheckCircle className="w-4 h-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  {isApplying
+                    ? applyProgress && applyProgress.total > 0
+                      ? `${testMode && !isForceLive ? 'Simulating' : 'Updating'} ${applyProgress.current} of ${applyProgress.total}${applyProgress.label ? ` (${applyProgress.label})` : ''}`
+                      : testMode && !isForceLive
+                      ? 'Simulating...'
+                      : 'Updating...'
+                    : testMode && !isForceLive
+                    ? `Simulate (${updateScope === 'all' ? 'All' : 'Missing'})`
+                    : `Update Plex (${updateScope === 'all' ? 'All' : 'Missing'})`}
+                </span>
+              </button>
+
+              {/* Progress bar */}
+              {isApplying && applyProgress && applyProgress.total > 0 && (
+                <div className="w-full bg-dark-800 rounded-full h-1 overflow-hidden">
+                  <div
+                    className={`${testMode && !isForceLive ? 'bg-amber-400' : 'bg-brand-400'} h-full transition-all duration-200 rounded-full`}
+                    style={{
+                      width: `${Math.min(100, Math.round((applyProgress.current / applyProgress.total) * 100))}%`
+                    }}
+                  />
+                </div>
               )}
-              <span>
-                {isApplying
-                  ? 'Processing...'
-                  : testMode
-                  ? 'Simulate (Test Mode)'
-                  : 'Apply Cards to Plex'}
-              </span>
-            </button>
+            </div>
 
             <button
+              type="button"
               onClick={onClose}
               className="text-gray-400 hover:text-white p-2 rounded-lg transition"
             >
@@ -309,10 +605,42 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-gray-800">
           {/* Left: Preview Canvas (7 cols) */}
           <div className="lg:col-span-7 p-6 flex flex-col gap-4 bg-dark-950/40">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-2">
-                <Eye className="w-4 h-4 text-brand-500" /> Live Card Preview
-              </span>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                  <Eye className="w-4 h-4 text-brand-500" /> Live Preview
+                </span>
+
+                {/* View Switcher: MediUX Card vs Generator Fallback */}
+                {currentEpMediuxCardUrl && activeShow.mode === 'auto' && (
+                  <div className="flex items-center bg-dark-800 p-0.5 rounded-lg border border-gray-700 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewTab('mediux')}
+                      className={`px-2 py-0.5 rounded-md font-medium transition flex items-center gap-1 ${
+                        previewTab === 'mediux'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : 'text-gray-400 hover:text-gray-200'
+                      }`}
+                    >
+                      <Zap className="w-3 h-3 text-emerald-400" />
+                      MediUX
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewTab('generator')}
+                      className={`px-2 py-0.5 rounded-md font-medium transition flex items-center gap-1 ${
+                        previewTab === 'generator'
+                          ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                          : 'text-gray-400 hover:text-gray-200'
+                      }`}
+                    >
+                      <Wand2 className="w-3 h-3 text-purple-400" />
+                      Generator
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Episode Picker with Loading Spinner */}
               <div className="flex items-center gap-2">
@@ -340,21 +668,60 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
 
             {/* Preview Frame */}
             <div className="relative aspect-video bg-dark-900 border border-gray-800 rounded-xl overflow-hidden shadow-2xl flex items-center justify-center">
-              {previewUrl ? (
+              {activeDisplayUrl ? (
                 <img
-                  src={previewUrl}
+                  src={activeDisplayUrl}
                   alt="Title Card Preview"
                   className="w-full h-full object-cover"
                 />
+              ) : isEpisodesLoading && !activeShow.has_custom_style ? (
+                <div className="flex flex-col items-center justify-center text-center p-6 gap-3 max-w-sm">
+                  <div className="relative">
+                    <Loader2 className="w-9 h-9 animate-spin text-purple-400" />
+                    <Sparkles className="w-4 h-4 text-brand-400 absolute -top-1 -right-1 animate-pulse" />
+                  </div>
+                  <div>
+                    <span className="font-semibold text-white text-sm block mb-1">
+                      Styling with Gemini AI & Fetching Stills...
+                    </span>
+                    <span className="text-gray-400 text-xs leading-relaxed block">
+                      Analyzing {activeShow.title}'s genres & tone while TMDb downloads 1080p backdrop stills.
+                    </span>
+                  </div>
+                </div>
               ) : (
-                <div className="flex flex-col items-center justify-center text-gray-500 text-xs gap-3">
+                <div className="flex flex-col items-center justify-center text-gray-400 text-xs gap-3">
                   <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
-                  <span>Loading preview still from TMDb...</span>
+                  <span>Loading episode still & rendering preview...</span>
+                </div>
+              )}
+
+              {/* Source Badge Overlay */}
+              {activeDisplayUrl && isShowingMediux && (
+                <div className="absolute top-3 left-3 bg-dark-950/85 backdrop-blur-md px-2.5 py-1 rounded-full border border-emerald-500/50 text-emerald-300 text-[11px] font-medium flex items-center gap-1.5 shadow">
+                  <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>
+                    MediUX Card • Set by {activeMediuxSet?.creator}
+                  </span>
+                </div>
+              )}
+
+              {activeDisplayUrl && !isShowingMediux && currentEpMediuxCardUrl && activeShow.mode === 'auto' && (
+                <div className="absolute top-3 left-3 bg-dark-950/85 backdrop-blur-md px-2.5 py-1 rounded-full border border-purple-500/50 text-purple-300 text-[11px] font-medium flex items-center gap-1.5 shadow">
+                  <Wand2 className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Generator Preview (Fallback Preset)</span>
+                </div>
+              )}
+
+              {activeDisplayUrl && activeShow.mode === 'auto' && !currentEpMediuxCardUrl && (
+                <div className="absolute top-3 left-3 bg-dark-950/85 backdrop-blur-md px-2.5 py-1 rounded-full border border-amber-500/50 text-amber-300 text-[11px] font-medium flex items-center gap-1.5 shadow">
+                  <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Generator Interim Fallback (No MediUX card)</span>
                 </div>
               )}
 
               {/* Subdued overlay indicator when rendering new style changes */}
-              {isPreviewLoading && previewUrl && (
+              {isPreviewLoading && previewUrl && !isShowingMediux && (
                 <div className="absolute top-3 right-3 bg-dark-950/80 backdrop-blur-md px-2.5 py-1 rounded-full border border-gray-700 text-gray-300 text-[11px] flex items-center gap-1.5 shadow">
                   <Loader2 className="w-3 h-3 animate-spin text-brand-500" />
                   <span>Updating...</span>
@@ -438,37 +805,140 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
             {/* MediUX Sets (when in Auto mode) */}
             {activeShow.mode === 'auto' && (
               <div className="border-t border-gray-800 pt-4">
-                <label className="text-xs font-semibold uppercase tracking-wider text-gray-400 block mb-2">
-                  Detected MediUX Sets ({availableSets.length})
-                </label>
-                <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                  {availableSets.map((set) => (
-                    <div
-                      key={set.id}
-                      className="bg-dark-850 border border-gray-800 hover:border-gray-700 rounded-lg p-2.5 flex items-center justify-between text-xs"
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+                    <span>Detected MediUX Sets</span>
+                    {!isSetsLoading && (
+                      <span className="text-gray-500 font-normal">({sortedSets.length})</span>
+                    )}
+                    {isSetsLoading && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-500 inline" />
+                    )}
+                  </label>
+                  {!isSetsLoading && activeShow.mediux_set_url && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectSet(null)}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 hover:underline flex items-center gap-1 font-medium transition"
                     >
-                      <div>
-                        <span className="font-semibold text-white">{set.creator}</span>
-                        <span className="text-gray-500 text-[11px] block">
-                          {set.total_cards} cards • Seasons: {set.seasons_covered.join(', ')}
-                        </span>
-                      </div>
-                      <a
-                        href={set.set_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-brand-500 hover:underline text-[11px] flex items-center gap-1"
-                      >
-                        View <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </div>
-                  ))}
-                  {availableSets.length === 0 && (
-                    <div className="text-xs text-gray-500 italic p-1">
-                      No sets with title cards detected on MediUX. Generator fallback will be used!
-                    </div>
+                      <RotateCcw className="w-3 h-3" /> Reset to Auto-Pick
+                    </button>
                   )}
                 </div>
+
+                {isSetsLoading ? (
+                  <div className="py-7 flex flex-col items-center justify-center gap-2.5 text-gray-400 bg-dark-850/50 border border-gray-800 rounded-xl">
+                    <Loader2 className="w-5 h-5 animate-spin text-brand-500" />
+                    <span className="text-xs text-gray-400">Checking MediUX for title cards and season posters...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {sortedSets.map((set, idx) => {
+                      const isManual = Boolean(
+                        activeShow.mediux_set_url &&
+                        (activeShow.mediux_set_url === set.set_url ||
+                         (set.id && activeShow.mediux_set_url.includes(set.id)))
+                      );
+                      const isAutoDefault = !activeShow.mediux_set_url && set.id === selectedSetId;
+                      const isSelected = isManual || isAutoDefault;
+                      const isPreferred = preferredCreators.some(
+                        (c) => c.toLowerCase() === (set.creator || '').toLowerCase()
+                      );
+
+                      return (
+                        <div
+                          key={set.id}
+                          className={`rounded-lg p-2.5 flex items-center justify-between text-xs transition border ${
+                            isSelected
+                              ? isManual
+                                ? 'bg-purple-950/30 border-purple-500/60 ring-1 ring-purple-500/40'
+                                : 'bg-emerald-950/30 border-emerald-500/60 ring-1 ring-emerald-500/40'
+                              : 'bg-dark-850 border-gray-800 hover:border-gray-700'
+                          }`}
+                        >
+                          <div className="flex-1 mr-3">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-white">{set.creator}</span>
+                              {isManual && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                                  Chosen by You
+                                </span>
+                              )}
+                              {isAutoDefault && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                  Auto-Selected
+                                </span>
+                              )}
+                              {isPreferred ? (
+                                <button
+                                  type="button"
+                                  title={`Preferred creator: ${set.creator}. Click to remove preference.`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleTogglePreferredCreator(set.creator);
+                                  }}
+                                  className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 flex items-center gap-1 transition"
+                                >
+                                  <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" /> Preferred
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  title={`Add ${set.creator} to preferred creators`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleTogglePreferredCreator(set.creator);
+                                  }}
+                                  className="px-1.5 py-0.5 rounded text-[10px] text-gray-400 hover:text-amber-300 border border-gray-700/60 hover:border-amber-500/50 hover:bg-amber-500/10 flex items-center gap-1 transition"
+                                >
+                                  <Star className="w-2.5 h-2.5" /> + Prefer
+                                </button>
+                              )}
+                            </div>
+                            <span className="text-gray-500 text-[11px] block mt-0.5">
+                              {set.total_cards} cards • Seasons: {set.seasons_covered.join(', ')}
+                              {set.season_posters && Object.keys(set.season_posters).length > 0 && (
+                                <span className="text-brand-400 font-medium ml-1.5">
+                                  • {Object.keys(set.season_posters).length} season {Object.keys(set.season_posters).length === 1 ? 'poster' : 'posters'}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {isSelected ? (
+                              <span className={`text-[11px] font-medium flex items-center gap-1 ${
+                                isManual ? 'text-purple-400' : 'text-emerald-400'
+                              }`}>
+                                <Check className="w-3.5 h-3.5" /> Active
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleSelectSet(set)}
+                                className="px-2 py-1 rounded text-[11px] font-medium bg-dark-750 hover:bg-dark-700 text-gray-200 border border-gray-700 hover:border-gray-600 transition"
+                              >
+                                Use This Set
+                              </button>
+                            )}
+                            <a
+                              href={set.set_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-brand-500 hover:underline text-[11px] flex items-center gap-1 ml-1"
+                            >
+                              View <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {sortedSets.length === 0 && (
+                      <div className="text-xs text-gray-500 italic p-1">
+                        No sets with title cards detected on MediUX. Generator fallback will be used!
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -502,28 +972,35 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
                   </span>
                   <span className="text-[10px] text-gray-500">Gemini 3.6 Flash</span>
                 </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="e.g., Gritty thriller with bold white font..."
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAiSuggest()}
-                    className="flex-1 bg-dark-900 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
-                  />
-                  <button
-                    onClick={handleAiSuggest}
-                    disabled={isAiLoading}
-                    className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
-                  >
-                    {isAiLoading ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Sparkles className="w-3.5 h-3.5" />
-                    )}
-                    <span>Suggest</span>
-                  </button>
-                </div>
+                {isEpisodesLoading && !activeShow.has_custom_style ? (
+                  <div className="bg-purple-950/40 border border-purple-500/30 rounded-lg p-2.5 flex items-center gap-2 text-xs text-purple-300 animate-pulse">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400 shrink-0" />
+                    <span>Gemini is analyzing show tone to recommend initial styling...</span>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g., Gritty thriller with bold white font..."
+                      value={aiPrompt}
+                      onChange={(e) => setAiPrompt(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAiSuggest()}
+                      className="flex-1 bg-dark-900 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                    />
+                    <button
+                      onClick={handleAiSuggest}
+                      disabled={isAiLoading}
+                      className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+                    >
+                      {isAiLoading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3.5 h-3.5" />
+                      )}
+                      <span>Suggest</span>
+                    </button>
+                  </div>
+                )}
                 {aiReasoning && (
                   <p className="text-[11px] text-gray-400 italic mt-1 leading-relaxed">
                     {aiReasoning}
@@ -547,9 +1024,9 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
                   }}
                   className="w-full bg-dark-800 border border-gray-700 text-xs rounded-lg px-3 py-2 text-white focus:outline-none focus:border-brand-500"
                 >
-                  <option value="left_center">Left Middle (e.g. Strange New Worlds)</option>
-                  <option value="left_bottom">Bottom Left (Cinematic)</option>
-                  <option value="center_bottom">Bottom Center (Classic Streaming)</option>
+                  <option value="left_center">Left Middle</option>
+                  <option value="left_bottom">Bottom Left</option>
+                  <option value="center_bottom">Bottom Center</option>
                   <option value="right_center">Right Middle</option>
                   <option value="right_bottom">Bottom Right</option>
                 </select>
@@ -758,10 +1235,23 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
               </div>
 
               <button
+                type="button"
                 onClick={handleSaveStyle}
-                className="w-full bg-dark-800 hover:bg-dark-700 border border-gray-700 text-white font-semibold py-2 rounded-lg text-xs transition mt-2"
+                disabled={isSavedJustNow}
+                className={`w-full font-semibold py-2 rounded-lg text-xs transition flex items-center justify-center gap-1.5 mt-2 ${
+                  isSavedJustNow
+                    ? 'bg-emerald-600/25 text-emerald-300 border border-emerald-500/50'
+                    : 'bg-dark-800 hover:bg-dark-700 border border-gray-700 text-white'
+                }`}
               >
-                Save Style Preset
+                {isSavedJustNow ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Preset Saved!</span>
+                  </>
+                ) : (
+                  <span>Save Style Preset</span>
+                )}
               </button>
             </div>
           </div>

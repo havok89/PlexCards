@@ -86,10 +86,10 @@ class PlexClient:
             })
         return episodes_data
 
-    def upload_episode_card(self, episode_rating_key: str, file_path_or_url: str):
-        """Upload a title card image to a Plex episode (gated by TEST_MODE)."""
+    def upload_episode_card(self, episode_rating_key: str, file_path_or_url: str, force_live: bool = False):
+        """Upload a title card image to a Plex episode (gated by TEST_MODE unless force_live=True)."""
         from backend.config import TEST_MODE
-        if TEST_MODE:
+        if TEST_MODE and not force_live:
             logger.info(f"🧪 [TEST MODE] Skipped upload to Plex for episode ID {episode_rating_key}. (Test mode active)")
             return
 
@@ -100,7 +100,35 @@ class PlexClient:
             episode.uploadPoster(url=file_path_or_url)
         else:
             episode.uploadPoster(filepath=file_path_or_url)
-        logger.info(f"Uploaded poster to episode {episode.title} (S{episode.seasonNumber:02d}E{episode.episodeNumber:02d})")
+        logger.info(f"✓ Uploaded title card to Plex for episode {episode.title} (S{episode.seasonNumber:02d}E{episode.episodeNumber:02d})")
+
+    def get_show_seasons(self, show_rating_key: str) -> List[Dict[str, Any]]:
+        """Fetch all seasons for a show from Plex."""
+        server = self.server
+        show = server.fetchItem(int(show_rating_key))
+        return [
+            {
+                "rating_key": str(s.ratingKey),
+                "season_number": s.seasonNumber,
+                "title": s.title
+            }
+            for s in show.seasons()
+        ]
+
+    def upload_season_poster(self, season_rating_key: str, file_path_or_url: str, force_live: bool = False):
+        """Upload a season poster to Plex (gated by TEST_MODE unless force_live=True)."""
+        from backend.config import TEST_MODE
+        if TEST_MODE and not force_live:
+            logger.info(f"🧪 [TEST MODE] Skipped upload of season poster to Plex for season ID {season_rating_key}. (Test mode active)")
+            return
+
+        server = self.server
+        season = server.fetchItem(int(season_rating_key))
+        if file_path_or_url.startswith("http://") or file_path_or_url.startswith("https://"):
+            season.uploadPoster(url=file_path_or_url)
+        else:
+            season.uploadPoster(filepath=file_path_or_url)
+        logger.info(f"✓ Uploaded season poster to Plex for {season.parentTitle} - Season {season.seasonNumber}")
 
     def _extract_tmdb_id(self, item) -> Optional[int]:
         """Extract TMDb ID from Plex GUIDs (e.g., 'tmdb://103516')."""

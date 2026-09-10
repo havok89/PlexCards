@@ -22,7 +22,7 @@ def init_db():
         backdrop_url TEXT,
         total_seasons INTEGER DEFAULT 0,
         total_episodes INTEGER DEFAULT 0,
-        mode TEXT DEFAULT 'auto', -- 'auto', 'generator_only', 'mediux_locked', 'ignored'
+        mode TEXT DEFAULT 'ignored', -- 'auto', 'generator_only', 'mediux_locked', 'ignored'
         mediux_set_url TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -73,16 +73,67 @@ def init_db():
     )
     """)
 
+    # App settings key-value store
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )
+    """)
+    default_settings = {
+        "auto_gemini_suggestion": "true",
+        "default_new_show_mode": "ignored",
+        "preferred_mediux_creators": ""
+    }
+    for k, v in default_settings.items():
+        cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
+
     conn.commit()
     conn.close()
 
+def get_setting(key: str, default: str = "") -> str:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    conn.close()
+    return row["value"] if row else default
+
+def set_setting(key: str, value: str):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    """, (key, value))
+    conn.commit()
+    conn.close()
+
+def get_all_settings() -> Dict[str, str]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT key, value FROM settings")
+    rows = cursor.fetchall()
+    conn.close()
+    return {r["key"]: r["value"] for r in rows}
+
+def bulk_update_show_modes(mode: str) -> int:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE shows SET mode = ?, updated_at = CURRENT_TIMESTAMP", (mode,))
+    count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return count
+
 def upsert_show(show_data: Dict[str, Any]):
+    default_mode = get_setting("default_new_show_mode", "ignored")
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
     INSERT INTO shows (rating_key, tmdb_id, title, year, poster_url, backdrop_url, total_seasons, total_episodes, mode, mediux_set_url, updated_at)
     VALUES (:rating_key, :tmdb_id, :title, :year, :poster_url, :backdrop_url, :total_seasons, :total_episodes, 
-            COALESCE((SELECT mode FROM shows WHERE rating_key = :rating_key), 'auto'),
+            COALESCE((SELECT mode FROM shows WHERE rating_key = :rating_key), :default_mode),
             COALESCE((SELECT mediux_set_url FROM shows WHERE rating_key = :rating_key), NULL),
             CURRENT_TIMESTAMP)
     ON CONFLICT(rating_key) DO UPDATE SET
@@ -94,7 +145,7 @@ def upsert_show(show_data: Dict[str, Any]):
         total_seasons = excluded.total_seasons,
         total_episodes = excluded.total_episodes,
         updated_at = CURRENT_TIMESTAMP
-    """, show_data)
+    """, {**show_data, "default_mode": default_mode})
     
     # Ensure default style exists
     cursor.execute("""
@@ -125,9 +176,14 @@ def get_all_shows() -> List[Dict[str, Any]]:
     cursor = conn.cursor()
     cursor.execute("""
     SELECT s.*, 
+           st.layout, st.text_position, st.font_family, st.font_color, st.subheading_color, 
+           st.gradient_side, st.gradient_width_pct, st.gradient_opacity_pct, 
+           st.show_subheading, st.subheading_format, st.subheading_icon, st.ai_prompt,
+           COALESCE(st.has_custom_style, 0) AS has_custom_style,
            (SELECT COUNT(*) FROM episodes e WHERE e.show_rating_key = s.rating_key AND e.card_source = 'mediux') AS mediux_cards_count,
            (SELECT COUNT(*) FROM episodes e WHERE e.show_rating_key = s.rating_key AND e.card_source LIKE 'generator%') AS generator_cards_count
     FROM shows s
+    LEFT JOIN show_styles st ON s.rating_key = st.rating_key
     ORDER BY s.title ASC
     """)
     rows = cursor.fetchall()

@@ -1,18 +1,20 @@
 import React from 'react';
-import { Film, Search, RefreshCw } from 'lucide-react';
+import { Film, Search, RefreshCw, Settings } from 'lucide-react';
 
 interface NavbarProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onScan: () => void;
   isScanning: boolean;
+  onOpenSettings: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   searchQuery,
   onSearchChange,
   onScan,
-  isScanning
+  isScanning,
+  onOpenSettings
 }) => {
   return (
     <header className="bg-dark-900 border-b border-gray-800 sticky top-0 z-40 px-6 py-4">
@@ -51,6 +53,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
             <span>{isScanning ? 'Scanning Plex...' : 'Scan Library'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="bg-dark-800 hover:bg-dark-700 border border-gray-700 text-gray-300 hover:text-white p-2 rounded-lg transition"
+            title="Application Settings"
+          >
+            <Settings className="w-5 h-5" />
           </button>
         </div>
       </div>
