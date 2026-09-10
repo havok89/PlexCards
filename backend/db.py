@@ -78,6 +78,17 @@ def init_db():
         FOREIGN KEY(show_rating_key) REFERENCES shows(rating_key) ON DELETE CASCADE
     )
     """)
+    # Season poster tracking
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS season_posters (
+        season_rating_key TEXT PRIMARY KEY,
+        show_rating_key TEXT NOT NULL,
+        season_number INTEGER NOT NULL,
+        poster_url TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(show_rating_key) REFERENCES shows(rating_key) ON DELETE CASCADE
+    )
+    """)
 
     # App settings key-value store
     cursor.execute("""
@@ -307,4 +318,28 @@ def update_show_tmdb_id(
         """, (tmdb_id, rating_key))
     conn.commit()
     conn.close()
+
+def get_show_season_posters(show_rating_key: str) -> Dict[int, str]:
+    """Retrieve all uploaded season posters for a show."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT season_number, poster_url FROM season_posters WHERE show_rating_key = ?", (show_rating_key,))
+    rows = cursor.fetchall()
+    conn.close()
+    return {r["season_number"]: r["poster_url"] for r in rows}
+
+def record_season_poster(season_rating_key: str, show_rating_key: str, season_number: int, poster_url: str):
+    """Record or update an uploaded season poster in SQLite."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO season_posters (season_rating_key, show_rating_key, season_number, poster_url, updated_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(season_rating_key) DO UPDATE SET
+        poster_url = excluded.poster_url,
+        updated_at = CURRENT_TIMESTAMP
+    """, (str(season_rating_key), str(show_rating_key), season_number, poster_url))
+    conn.commit()
+    conn.close()
+
 

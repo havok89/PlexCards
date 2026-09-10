@@ -4,12 +4,12 @@ from pathlib import Path
 import tempfile
 import requests
 
-from backend.db import init_db, get_db, upsert_show, get_show, get_all_shows, get_setting
+from backend.db import init_db, get_db, upsert_show, get_show, get_all_shows, get_setting, get_show_season_posters, record_season_poster
 from backend.plex_client import PlexClient
 from backend.tmdb_client import TMDbClient
 from backend.mediux_client import MediuxClient
 from backend.generator.renderer import TitleCardRenderer
-from backend.config import CACHE_DIR, TEST_MODE, TEST_OUTPUT_DIR
+from backend.config import CACHE_DIR, STILLS_DIR, TEST_MODE, TEST_OUTPUT_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,81 @@ class SyncManager:
         self.tmdb = TMDbClient()
         self.mediux = MediuxClient()
         self.renderer = TitleCardRenderer()
+
+    def get_episode_backdrop_still(self, show: Dict[str, Any], ep: Dict[str, Any]) -> Optional[Path]:
+        """
+        Cascade to find or generate the best available still image for an episode card:
+        1. TMDb official episode promotional still
+        2. Plex episode video thumbnail
+        3. Show backdrop art (from TMDb or Plex)
+        4. Clean cinematic dark canvas
+        """
+        tmdb_id = show.get("tmdb_id")
+        s_num = ep.get("season_number")
+        e_num = ep.get("episode_number")
+
+        # 1. Official TMDb episode still
+        if tmdb_id and s_num is not None and e_num is not None:
+            try:
+                still_file = self.tmdb.get_episode_still(tmdb_id, s_num, e_num)
+                if still_file and still_file.exists():
+                    return still_file
+            except Exception as e:
+                logger.warning(f"Failed to fetch TMDb still for {show.get('title')} S{s_num:02d}E{e_num:02d}: {e}")
+
+        # 2. Plex episode thumbnail
+        ep_key = ep.get("rating_key")
+        thumb_url = ep.get("thumb_url")
+        if thumb_url and ep_key:
+            plex_still_path = STILLS_DIR / f"plex_{ep_key}.jpg"
+            if plex_still_path.exists():
+                return plex_still_path
+            try:
+                r = requests.get(thumb_url, timeout=15)
+                if r.status_code == 200:
+                    with open(plex_still_path, "wb") as f:
+                        f.write(r.content)
+                    logger.info(f"📸 Used Plex thumbnail fallback for {show.get('title')} S{s_num:02d}E{e_num:02d}")
+                    return plex_still_path
+            except Exception as e:
+                logger.warning(f"Could not download Plex thumbnail for episode {ep_key}: {e}")
+
+        # 3. Show backdrop art
+        show_key = show.get("rating_key", "default")
+        backdrop_url = show.get("backdrop_url")
+        if not backdrop_url and tmdb_id:
+            try:
+                details = self.tmdb.get_show_details(tmdb_id)
+                if details:
+                    backdrop_url = details.get("backdrop_url")
+            except Exception:
+                pass
+
+        if backdrop_url:
+            backdrop_path = STILLS_DIR / f"backdrop_{show_key}.jpg"
+            if backdrop_path.exists():
+                return backdrop_path
+            try:
+                r = requests.get(backdrop_url, timeout=15)
+                if r.status_code == 200:
+                    with open(backdrop_path, "wb") as f:
+                        f.write(r.content)
+                    logger.info(f"🎨 Used show backdrop fallback for {show.get('title')} S{s_num:02d}E{e_num:02d}")
+                    return backdrop_path
+            except Exception as e:
+                logger.warning(f"Could not download show backdrop for show {show_key}: {e}")
+
+        # 4. Cinematic dark canvas fallback
+        canvas_path = STILLS_DIR / "generic_canvas.jpg"
+        if not canvas_path.exists():
+            try:
+                from PIL import Image
+                img = Image.new("RGB", (1920, 1080), (18, 20, 26))
+                img.save(canvas_path, quality=95)
+            except Exception as e:
+                logger.warning(f"Could not create generic canvas fallback: {e}")
+                return None
+        return canvas_path
 
     def scan_and_index_library(self):
         """Scan all TV shows from Plex and store in database. Auto-matches shows with TMDb if Plex has no TMDb ID."""
@@ -142,7 +217,7 @@ class SyncManager:
                 }
 
                 ep_key = ep["rating_key"]
-                still_file = self.tmdb.get_episode_still(tmdb_id, s_num, e_num)
+                still_file = self.get_episode_backdrop_still(show, ep)
                 if not still_file:
                     continue
 
@@ -225,13 +300,25 @@ class SyncManager:
 
         # Pre-check target season posters
         target_seasons = []
+        existing_season_posters = get_show_season_posters(rating_key)
         if matched_set and matched_set.get("season_posters"):
             try:
                 plex_seasons = self.plex.get_show_seasons(rating_key)
                 for season in plex_seasons:
                     s_num = season["season_number"]
-                    if matched_set["season_posters"].get(str(s_num)) or matched_set["season_posters"].get(s_num):
-                        target_seasons.append(season)
+                    poster_url = matched_set["season_posters"].get(str(s_num)) or matched_set["season_posters"].get(s_num)
+                    if not poster_url:
+                        continue
+
+                    already_recorded = existing_season_posters.get(s_num) == poster_url
+                    already_has_plex_art = season.get("has_poster", False)
+
+                    if not force_all and (already_recorded or already_has_plex_art):
+                        if not already_recorded:
+                            record_season_poster(season["rating_key"], rating_key, s_num, poster_url)
+                        continue
+
+                    target_seasons.append((season, poster_url))
             except Exception as e:
                 logger.warning(f"Could not check seasons for '{show['title']}': {e}")
 
@@ -301,7 +388,7 @@ class SyncManager:
                 updated_count += 1
             else:
                 # Fallback: Render clean interim card using preset
-                still_file = self.tmdb.get_episode_still(tmdb_id, s_num, e_num)
+                still_file = self.get_episode_backdrop_still(show, ep)
                 if still_file:
                     card_img = self.renderer.render(
                         base_image_path=still_file,
@@ -328,7 +415,7 @@ class SyncManager:
         # Pull Season Posters if present in MediUX set
         if target_seasons:
             clean_title = "".join(c for c in show["title"] if c.isalnum() or c in (" ", "-", "_")).strip()
-            for season in target_seasons:
+            for season, poster_url in target_seasons:
                 current_item += 1
                 s_num = season["season_number"]
                 season_label = f"Season {s_num} Poster"
@@ -341,29 +428,28 @@ class SyncManager:
                     "message": f"Updating {current_item} of {total_items} ({season_label})"
                 }
 
-                poster_url = matched_set["season_posters"].get(str(s_num)) or matched_set["season_posters"].get(s_num)
-                if poster_url:
-                    if is_test:
-                        show_test_dir = TEST_OUTPUT_DIR / clean_title
-                        show_test_dir.mkdir(parents=True, exist_ok=True)
-                        out_path = show_test_dir / f"Season_{s_num:02d}_poster.jpg"
-                        if not out_path.exists():
-                            try:
-                                r = requests.get(poster_url, timeout=10)
-                                if r.status_code == 200:
-                                    with open(out_path, "wb") as f:
-                                        f.write(r.content)
-                                    logger.info(f"🧪 [TEST MODE] Saved season {s_num} poster to {out_path}")
-                            except Exception as e:
-                                logger.warning(f"Could not save test season poster: {e}")
+                if is_test:
+                    show_test_dir = TEST_OUTPUT_DIR / clean_title
+                    show_test_dir.mkdir(parents=True, exist_ok=True)
+                    out_path = show_test_dir / f"Season_{s_num:02d}_poster.jpg"
+                    if not out_path.exists():
+                        try:
+                            r = requests.get(poster_url, timeout=10)
+                            if r.status_code == 200:
+                                with open(out_path, "wb") as f:
+                                    f.write(r.content)
+                                logger.info(f"🧪 [TEST MODE] Saved season {s_num} poster to {out_path}")
+                        except Exception as e:
+                            logger.warning(f"Could not save test season poster: {e}")
 
-                    try:
-                        from backend.plex_listener import plex_listener
-                        plex_listener.ignore_show(rating_key, duration=30.0)
-                    except Exception:
-                        pass
-                    self.plex.upload_season_poster(season["rating_key"], poster_url, force_live=force_live)
-                    updated_season_posters += 1
+                try:
+                    from backend.plex_listener import plex_listener
+                    plex_listener.ignore_show(rating_key, duration=30.0)
+                except Exception:
+                    pass
+                self.plex.upload_season_poster(season["rating_key"], poster_url, force_live=force_live)
+                record_season_poster(season["rating_key"], rating_key, s_num, poster_url)
+                updated_season_posters += 1
 
         poster_msg = f" and {updated_season_posters} season posters" if updated_season_posters > 0 else ""
         try:

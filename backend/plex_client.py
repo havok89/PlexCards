@@ -110,7 +110,8 @@ class PlexClient:
             {
                 "rating_key": str(s.ratingKey),
                 "season_number": s.seasonNumber,
-                "title": s.title
+                "title": s.title,
+                "has_poster": bool(getattr(s, 'thumb', None) or getattr(s, 'thumbUrl', None))
             }
             for s in show.seasons()
         ]

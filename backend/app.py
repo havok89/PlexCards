@@ -501,10 +501,24 @@ def generate_preview(rating_key: str, payload: dict = Body(...)):
     if cached_preview.exists():
         return FileResponse(cached_preview, media_type="image/jpeg")
 
-    # Fetch still
-    still_path = tmdb.get_episode_still(tmdb_id, season_num, episode_num)
+    # Fetch still with fallback cascade
+    ep_dict = {
+        "season_number": season_num,
+        "episode_number": episode_num,
+        "title": episode_title
+    }
+    try:
+        episodes = sync_mgr.plex.get_show_episodes(rating_key)
+        for ep in episodes:
+            if ep["season_number"] == season_num and ep["episode_number"] == episode_num:
+                ep_dict = ep
+                break
+    except Exception:
+        pass
+
+    still_path = sync_mgr.get_episode_backdrop_still(show, ep_dict)
     if not still_path:
-        raise HTTPException(status_code=404, detail="Could not fetch episode still from TMDb")
+        raise HTTPException(status_code=404, detail="Could not fetch or generate still image for preview")
 
     card_img = renderer.render(
         base_image_path=still_path,
