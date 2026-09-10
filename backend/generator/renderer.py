@@ -51,9 +51,11 @@ class TitleCardRenderer:
             "Teko": "https://github.com/google/fonts/raw/main/ofl/teko/Teko%5Bwght%5D.ttf",
             "Michroma": "https://github.com/google/fonts/raw/main/ofl/michroma/Michroma-Regular.ttf",
             "Rubik": "https://github.com/google/fonts/raw/main/ofl/rubik/Rubik%5Bwght%5D.ttf",
-            "Barlow Condensed": "https://github.com/google/fonts/raw/main/ofl/barlowcondensed/BarlowCondensed-Bold.ttf",
-            "Montserrat": "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat%5Bwght%5D.ttf"
+            "Barlow Condensed": "https://github.com/google/fonts/raw/main/ofl/barlowcondensed/BarlowCondensed-Bold.ttf"
         }
+        # Purge Montserrat if previously downloaded (too thin for title cards)
+        (self.fonts_dir / "Montserrat.ttf").unlink(missing_ok=True)
+
         for name, url in default_font_urls.items():
             path = self.fonts_dir / f"{name.replace(' ', '')}.ttf"
             if not path.exists():
@@ -73,6 +75,8 @@ class TitleCardRenderer:
 
     def download_open_source_font(self, font_name: str) -> Optional[Path]:
         """Automatically fetch any open-source font on-the-fly via Google Fonts API."""
+        if not font_name or "montserrat" in font_name.lower():
+            return None
         clean_name = font_name.replace(" ", "")
         target_path = self.fonts_dir / f"{clean_name}.ttf"
         if target_path.exists():
@@ -103,7 +107,10 @@ class TitleCardRenderer:
 
     def get_font_path(self, font_family: str) -> Path:
         """Find font in custom_fonts/ or cache/fonts/, or auto-download if open-source."""
-        clean_name = font_family.replace(" ", "").lower()
+        clean_name = (font_family or "").replace(" ", "").lower()
+        if "montserrat" in clean_name:
+            # Montserrat is explicitly disallowed (too thin for title cards); fall back to Inter
+            return self.get_font_path("Inter")
 
         # 1. Check custom_fonts/ for .ttf or .otf (user-supplied)
         for ext in [".ttf", ".otf"]:
@@ -139,6 +146,8 @@ class TitleCardRenderer:
         for ext in ["*.ttf", "*.otf"]:
             for p in self.custom_fonts_dir.glob(ext):
                 name = p.stem
+                if "montserrat" in name.lower():
+                    continue
                 if name.lower() not in seen:
                     seen.add(name.lower())
                     fonts.append({"name": name, "type": "custom", "filename": p.name})
@@ -147,6 +156,8 @@ class TitleCardRenderer:
         for ext in ["*.ttf", "*.otf"]:
             for p in self.fonts_dir.glob(ext):
                 name = p.stem
+                if "montserrat" in name.lower():
+                    continue
                 if name.lower() not in seen:
                     seen.add(name.lower())
                     fonts.append({"name": name, "type": "open_source", "filename": p.name})

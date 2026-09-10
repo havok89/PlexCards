@@ -66,7 +66,7 @@ An official promotional poster for this show is ATTACHED. Visually inspect the p
    - Identify the typography style of the show title on the poster (e.g. stencil serif, bold condensed grotesque, techno geometric, retro 80s brush, hand-drawn comic, modern slab).
    - "font_family": Select the closest open-source Google Font equivalent for the main episode title that captures the exact spirit and letterforms of the poster logo.
    - "subheading_font_family": Select a complementary open-source Google Font for the subtitle (Season/Episode header). In professional title card design, font pairing is critical:
-     * If "font_family" is an expressive or ornate display font (e.g. Cinzel, Bangers, Righteous, Teko, Playfair Display), pair it with a clean, geometric sans-serif (such as Montserrat, Inter, Barlow, Outfit, Space Grotesk).
+     * If "font_family" is an expressive or ornate display font (e.g. Cinzel, Bangers, Righteous, Teko, Playfair Display), pair it with a clean, solid grotesque or condensed sans-serif (such as Inter, Barlow Condensed, Rubik, Oswald, Outfit, Space Grotesk).
      * If "font_family" is already a clean modern sans-serif (e.g. Inter, Oswald), you may use the same font or a subtle companion.
 
 2. COMPOSITION-AWARE TEXT POSITIONING:
@@ -98,7 +98,7 @@ An official promotional poster for this show is ATTACHED. Visually inspect the p
 """ if has_poster else """
 Analyze the show's genres and synopsis to select optimal typography, font pairing, colors, and layout:
 1. "font_family": High-quality open-source Google Font tailored to the show's aesthetic.
-2. "subheading_font_family": Clean, complementary Google Font (e.g. Montserrat, Inter, or matching).
+2. "subheading_font_family": Clean, complementary Google Font (e.g. Inter, Barlow Condensed, Rubik, or matching).
 3. "title_font_size": Integer between 65 and 105 (default 82).
 4. "subheading_font_size": Integer between 26 and 42 (default 34).
 5. "text_position": One of ["left_center", "left_bottom", "center_bottom", "right_center", "right_bottom", "top_left", "center"].
@@ -141,6 +141,9 @@ User Style Direction: {user_prompt or 'Match the authentic tone, genre, and aest
    - NEVER choose dark or low-contrast colors (e.g. navy, dark red, dark purple, forest green, dark gray, muddy brown).
    - "font_color": Must be high-luminance (e.g. crisp white "#FFFFFF", bright ivory "#FFF8E7", golden amber "#F4B84D", cyber cyan "#00E5FF", neon yellow "#FFD600").
    - "subheading_color": Must complement "font_color" while remaining crisp and readable (e.g. "#E5E7EB", "#D1D5DB", "#F4B84D").
+
+4. STRICTLY PROHIBITED FONTS:
+   - NEVER choose or suggest "Montserrat" under any circumstances for either title or subtitle. It renders far too thin and frail for TV displays. Prefer solid, punchy grotesque or condensed options like Inter, Barlow Condensed, Rubik, Oswald, Outfit, or matching the title font.
 
 Return ONLY a JSON object with these exact keys:
 - "font_family": Name of the selected open-source Google Font for the title.
@@ -205,6 +208,12 @@ Return ONLY a JSON object with these exact keys:
             # Subheading font fallback
             if not data.get("subheading_font_family"):
                 data["subheading_font_family"] = data.get("font_family", "Oswald")
+
+            # Defensively intercept and purge Montserrat if suggested
+            if "montserrat" in (data.get("subheading_font_family") or "").lower():
+                data["subheading_font_family"] = data.get("font_family") if "montserrat" not in (data.get("font_family") or "").lower() else "Inter"
+            if "montserrat" in (data.get("font_family") or "").lower():
+                data["font_family"] = "Oswald"
 
             # Subheading position, casing, tracking, gap, width
             pos = str(data.get("subheading_position", "above")).lower()

@@ -25,7 +25,7 @@ Whether you want consistent artwork for airing series before designers upload to
 - **Crisp 1080p Title Cards:** Renders ultra-clean episode cards on high-resolution TMDb backdrops and stills.
 - **Side-Stack Gradient Preset:** Modern horizontal or vertical dark gradient overlay (left, right, top, bottom) ensuring 100% typography legibility across any bright or busy backdrop.
 - **Full Typography Control:**
-  - Bundled premium Google fonts (*Oswald, Montserrat, Cinzel, Bebas Neue, Playfair Display, Anton, Inter, and more*).
+  - Bundled premium Google fonts (*Oswald, Inter, Cinzel, Bebas Neue, Playfair Display, Anton, Barlow Condensed, Rubik, and more*).
   - Custom `.ttf` and `.otf` font uploader built right into the UI.
   - Granular font sizing slider (40pt – 130pt) and customizable title/subtitle distance offset.
   - Subheading formatting: season/episode markers, uppercase toggles, and individual color pickers.
