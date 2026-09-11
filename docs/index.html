@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PlexCards — Automated MediUX & Title Card Generator for Plex</title>
+  <meta name="description" content="Automated MediUX artwork downloader and title card generator for Plex Media Server. Supports TheTVDB v4, TMDb, Gemini AI, custom typography, and real-time WebSocket library syncing." />
+  
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="PlexCards — Automated MediUX & Title Card Generator" />
+  <meta property="og:description" content="Matches official MediUX card sets to your Plex TV shows or generates customized title cards using TVDB & TMDb screencaps." />
+  <meta property="og:image" content="screenshots/home.png" />
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              400: '#fbbf24',
+              500: '#f59e0b',
+              600: '#d97706',
+              950: '#0c0a06',
+            },
+            dark: {
+              800: '#141824',
+              850: '#0f121b',
+              900: '#0a0d14',
+              950: '#05070a',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    code, pre { font-family: 'JetBrains Mono', monospace; }
+    .card-dark {
+      background: #0f121b;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  </style>
+</head>
+<body class="bg-dark-950 text-gray-200 antialiased selection:bg-brand-500 selection:text-dark-950 min-h-screen">
+
+  <!-- Navigation Bar -->
+  <header class="sticky top-0 z-50 bg-dark-900/90 backdrop-blur-md border-b border-gray-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+      
+      <!-- Brand Logo -->
+      <a href="#" class="flex items-center gap-2.5 font-bold text-white tracking-tight text-base">
+        <div class="w-7 h-7 rounded-lg bg-brand-500 flex items-center justify-center text-dark-950 font-black">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <line x1="2" y1="7" x2="7" y2="7"></line>
+            <line x1="2" y1="17" x2="7" y2="17"></line>
+            <line x1="17" y1="17" x2="22" y2="17"></line>
+            <line x1="17" y1="7" x2="22" y2="7"></line>
+          </svg>
+        </div>
+        <span>PlexCards</span>
+      </a>
+
+      <!-- Navigation Links -->
+      <nav class="hidden md:flex items-center gap-6 text-xs sm:text-sm font-medium text-gray-300">
+        <a href="#how-it-works" class="hover:text-white transition">Workflow</a>
+        <a href="#features" class="hover:text-white transition">Features</a>
+        <a href="#screenshots" class="hover:text-white transition">Screenshots & Features</a>
+        <a href="#config" class="hover:text-white transition">Environment</a>
+        <a href="#quickstart" class="hover:text-white transition">Docker Setup</a>
+      </nav>
+
+      <!-- GitHub Link -->
+      <a 
+        href="https://github.com/havok89/PlexCards" 
+        target="_blank" 
+        rel="noopener noreferrer"
+        class="flex items-center gap-1.5 bg-dark-800 hover:bg-dark-700 text-gray-200 hover:text-white border border-gray-700 px-3 py-1.5 rounded-lg text-xs font-medium transition"
+      >
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"></path>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="pt-12 pb-14 sm:pt-16 sm:pb-18 max-w-5xl mx-auto px-4 sm:px-6 text-center">
+    <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-dark-850 text-xs font-mono text-gray-400 border border-gray-800 mb-6">
+      <span class="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
+      <span>v1.2: TheTVDB v4, MediUX Bridge & Single-Card Studio Update</span>
+    </div>
+
+    <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight text-white max-w-3xl mx-auto leading-tight">
+      Automated MediUX & Title Card Generator for Plex
+    </h1>
+
+    <p class="mt-4 text-sm sm:text-base text-gray-400 max-w-2xl mx-auto leading-relaxed">
+      PlexCards matches community MediUX title card sets to your TV shows. When a show or episode doesn't have MediUX artwork, it automatically generates clean title cards using TheTVDB & TMDb screencaps and your custom typography.
+    </p>
+
+    <!-- CTAs -->
+    <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+      <a 
+        href="#quickstart" 
+        class="px-5 py-2.5 rounded-lg bg-brand-500 hover:bg-brand-400 text-dark-950 font-bold text-xs sm:text-sm transition flex items-center gap-2"
+      >
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        Docker Quickstart
+      </a>
+      <a 
+        href="#screenshots" 
+        class="px-5 py-2.5 rounded-lg bg-dark-850 hover:bg-dark-800 text-gray-300 hover:text-white font-medium text-xs sm:text-sm border border-gray-700 transition"
+      >
+        View Screenshots & Tour
+      </a>
+    </div>
+
+    <!-- Home Screenshot Frame -->
+    <div class="mt-10 rounded-xl overflow-hidden border border-gray-800 bg-dark-900 shadow-2xl">
+      <div class="h-8 bg-dark-850 border-b border-gray-800 px-3 flex items-center justify-between text-[11px] text-gray-400">
+        <div class="flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-red-500/80 inline-block"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-yellow-500/80 inline-block"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-green-500/80 inline-block"></span>
+        </div>
+        <span class="font-mono text-gray-500">PlexCards Library View</span>
+        <span class="font-mono text-emerald-400 flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> WebSocket Live
+        </span>
+      </div>
+      <img 
+        src="screenshots/home.png" 
+        alt="PlexCards TV Library Dashboard" 
+        class="w-full h-auto object-cover"
+        loading="lazy"
+      />
+    </div>
+  </section>
+
+  <!-- How It Works / Pipeline -->
+  <section id="how-it-works" class="py-14 border-t border-gray-800 bg-dark-900/50">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6">
+      <h2 class="text-xs font-bold uppercase tracking-wider text-brand-400 mb-1">Architecture</h2>
+      <h3 class="text-2xl font-bold text-white tracking-tight mb-8">How PlexCards Works</h3>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        <div class="card-dark rounded-xl p-4">
+          <div class="text-xs font-mono font-bold text-brand-400 mb-2">01. DETECTION</div>
+          <h4 class="text-sm font-bold text-white mb-1">WebSocket Listener</h4>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            Connects to Plex via WebSocket. Detects newly added or scanned episodes immediately without polling delays.
+          </p>
+        </div>
+
+        <div class="card-dark rounded-xl p-4">
+          <div class="text-xs font-mono font-bold text-emerald-400 mb-2">02. MEDIUX MATCH</div>
+          <h4 class="text-sm font-bold text-white mb-1">Community Sets</h4>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            Checks MediUX for artwork sets. Supports locking to preferred creators and translating TVDB GUIDs to TMDb.
+          </p>
+        </div>
+
+        <div class="card-dark rounded-xl p-4">
+          <div class="text-xs font-mono font-bold text-purple-400 mb-2">03. FALLBACK GENERATION</div>
+          <h4 class="text-sm font-bold text-white mb-1">Custom Typography</h4>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            For missing cards, pulls 1080p screencaps from TVDB/TMDb and renders typography cards using Pillow.
+          </p>
+        </div>
+
+        <div class="card-dark rounded-xl p-4">
+          <div class="text-xs font-mono font-bold text-cyan-400 mb-2">04. PLEX UPLOAD</div>
+          <h4 class="text-sm font-bold text-white mb-1">Direct Sync</h4>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            Uploads the artwork directly to the episode in Plex. Safe testing mode available to verify renders locally first.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Features List -->
+  <section id="features" class="py-14 border-t border-gray-800">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6">
+      <h2 class="text-xs font-bold uppercase tracking-wider text-brand-400 mb-1">Features</h2>
+      <h3 class="text-2xl font-bold text-white tracking-tight mb-8">Core Capabilities</h3>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        
+        <div class="card-dark rounded-xl p-4">
+          <h4 class="text-sm font-bold text-white flex items-center gap-2 mb-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            Dual Provider Engine (TheTVDB v4 & TMDb)
+          </h4>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            Full support for TheTVDB v4 Project API keys and subscriber PINs. Prioritizes TheTVDB for libraries structured via Sonarr, and cascades to TMDb automatically. Respects TVDB broadcast statuses (<code class="text-xs text-gray-300">Continuing</code> vs <code class="text-xs text-gray-300">Ended</code>).
+          </p>
+        </div>
+
+        <div class="card-dark rounded-xl p-4">
+          <h4 class="text-sm font-bold text-white flex items-center gap-2 mb-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-brand-400"></span>
+            Single-Card Live Update ("Update This Card")
+          </h4>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            Need to adjust the font size, fix a typo, or pick a different still for just one episode? Click <strong>"Update This Card"</strong> in the studio to render and upload that single episode to Plex without re-running the entire show.
+          </p>
+        </div>
+
+        <div class="card-dark rounded-xl p-4">
+          <h4 class="text-sm font-bold text-white flex items-center gap-2 mb-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+            Candidate Stills Carousel
+          </h4>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            Browse all community-submitted stills from TheTVDB and TMDb with community ratings, resolution tags, and provider badges. Includes one-click <strong>Smart Auto-Pick</strong> for the highest-rated screencap per season.
+          </p>
+        </div>
+
+        <div class="card-dark rounded-xl p-4">
+          <h4 class="text-sm font-bold text-white flex items-center gap-2 mb-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+            2-in-a-Row Shelf Simulator & Split Slider
+          </h4>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            Verify text legibility and alignment using the side-by-side TV shelf simulator (2 in a row). Drag the interactive split slider to compare the raw screencap against the rendered title card.
+          </p>
+        </div>
+
+        <div class="card-dark rounded-xl p-4">
+          <h4 class="text-sm font-bold text-white flex items-center gap-2 mb-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+            Dry-Run Test Mode
+          </h4>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            <code class="text-xs text-amber-300">TEST_MODE=true</code> by default. Renders test cards to <code class="text-xs text-gray-300">cache/test_output/</code> without writing to your Plex server until you toggle "Live Upload" or set <code class="text-xs text-amber-300">TEST_MODE=false</code>.
+          </p>
+        </div>
+
+        <div class="card-dark rounded-xl p-4">
+          <h4 class="text-sm font-bold text-white flex items-center gap-2 mb-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+            Optional Plex OAuth & User Whitelist
+          </h4>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            Require users to log in using their official Plex account (<code class="text-xs text-rose-300">ENABLE_AUTH=true</code>). Restricts access to the server owner by default, with optional username whitelist via <code class="text-xs text-rose-300">ALLOWED_USERS</code>.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Detailed Screenshots Section -->
+  <section id="screenshots" class="py-14 border-t border-gray-800 bg-dark-900/40">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6">
+      <h2 class="text-xs font-bold uppercase tracking-wider text-brand-400 mb-1">Visual Walkthrough</h2>
+      <h3 class="text-2xl font-bold text-white tracking-tight mb-8">Screenshots & Feature Breakdown</h3>
+
+      <div class="space-y-16">
+        
+        <!-- Screenshot 1: Library Dashboard -->
+        <div class="space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 border-b border-gray-800 pb-3">
+            <h4 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-brand-400"></span>
+              1. Main Library Dashboard
+            </h4>
+            <span class="text-xs text-gray-500 font-mono">home.png</span>
+          </div>
+          
+          <div class="rounded-xl overflow-hidden border border-gray-800 bg-dark-950 shadow-xl">
+            <img src="screenshots/home.png" alt="PlexCards Main Library Dashboard" class="w-full h-auto object-cover" loading="lazy" />
+          </div>
+          
+          <div class="text-sm text-gray-300 space-y-2 leading-relaxed">
+            <p>
+              The main dashboard provides an overview of your entire Plex TV library. Each series card displays high-resolution poster artwork, release year, total seasons and episode counts, and a direct status badge showing whether the series is active (<code class="text-xs text-cyan-300 bg-dark-800 px-1.5 py-0.5 rounded border border-gray-700">Continuing</code>) or concluded (<code class="text-xs text-gray-400 bg-dark-800 px-1.5 py-0.5 rounded border border-gray-700">Ended</code>).
+            </p>
+            <ul class="list-disc list-inside space-y-1 text-xs text-gray-400 ml-1">
+              <li><strong>Operation Modes:</strong> Shows can be assigned to <strong class="text-emerald-300">Auto (MediUX)</strong>, <strong class="text-purple-300">Generator Only</strong>, or <strong class="text-gray-400">Ignored</strong> directly from the card badge.</li>
+              <li><strong>Real-Time Live Status:</strong> The header pill indicates an active WebSocket connection to Plex. Newly added episodes are captured and processed immediately.</li>
+              <li><strong>Quick Search & Bulk Actions:</strong> Instant filtering by title, release year, or airing status.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Screenshot 2: Studio MediUX Set View -->
+        <div class="space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 border-b border-gray-800 pb-3">
+            <h4 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+              2. Show Studio — MediUX Artwork Set Browser
+            </h4>
+            <span class="text-xs text-gray-500 font-mono">studio-tab-open-mediux-selected.png</span>
+          </div>
+
+          <div class="rounded-xl overflow-hidden border border-gray-800 bg-dark-950 shadow-xl">
+            <img src="screenshots/studio-tab-open-mediux-selected.png" alt="Show Studio with MediUX Set Selection" class="w-full h-auto object-cover" loading="lazy" />
+          </div>
+
+          <div class="text-sm text-gray-300 space-y-2 leading-relaxed">
+            <p>
+              When viewing a show in the Studio, PlexCards queries the MediUX community API using the show's TMDb and TheTVDB IDs. Available sets are listed on the right sidebar, showing creator usernames, total card counts, covered seasons, and bundled season posters.
+            </p>
+            <ul class="list-disc list-inside space-y-1 text-xs text-gray-400 ml-1">
+              <li><strong>Artist Favoriting:</strong> Clicking <em>+ Prefer</em> flags that creator as a preferred artist. Future series and seasons by that artist will be auto-selected by default across your entire library.</li>
+              <li><strong>Live Episode Carousel:</strong> Cycle through seasons and episodes using the dropdown. The preview updates instantly with the selected set's title card.</li>
+              <li><strong>Metadata Linking:</strong> Direct external links to TMDb and TheTVDB, along with a <em>Fix Match in Plex</em> button to resolve misidentified series with the Plex agent.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Screenshot 3: Studio Generator & Gemini AI Suggestions -->
+        <div class="space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 border-b border-gray-800 pb-3">
+            <h4 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+              3. Title Card Generator — Candidate Stills & Gemini AI Styling
+            </h4>
+            <span class="text-xs text-gray-500 font-mono">studio-tab-generator-styles.png</span>
+          </div>
+
+          <div class="rounded-xl overflow-hidden border border-gray-800 bg-dark-950 shadow-xl">
+            <img src="screenshots/studio-tab-generator-styles.png" alt="Generator Studio with Candidate Stills and Gemini AI Assistant" class="w-full h-auto object-cover" loading="lazy" />
+          </div>
+
+          <div class="text-sm text-gray-300 space-y-3 leading-relaxed">
+            <p>
+              When a show lacks MediUX artwork or you prefer a custom design, switch to the <strong>Generator</strong> tab. PlexCards downloads 1080p community screencaps and gives you fine-grained control over typography, placement, and framing.
+            </p>
+
+            <div class="card-dark rounded-lg p-3.5 border-l-2 border-purple-500 space-y-1.5">
+              <div class="text-xs font-bold text-purple-400 flex items-center gap-1.5 uppercase tracking-wide">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                AI Style Assistant (Optional Feature — Google Gemini)
+              </div>
+              <p class="text-xs text-gray-300 leading-relaxed">
+                If you supply an optional <code class="text-purple-300 font-mono">GEMINI_API_KEY</code>, PlexCards features an AI styling assistant powered by <strong>Gemini 3.5 Flash Lite</strong>. Gemini evaluates the show's genres, plot overview, and aesthetic tone to recommend complementary font families, subtitle pairings, warm/cool color palettes, drop shadow intensity, and alignment (e.g. recommending <em>Cinzel</em> serif paired with <em>Inter</em> subtitles for high-fantasy titles).
+              </p>
+              <p class="text-xs text-gray-400 italic">
+                * Note: Gemini AI styling is completely optional. If <code class="font-mono text-gray-300">GEMINI_API_KEY</code> is omitted in your .env file, the entire AI section is cleanly hidden from the UI without warnings, and all manual typography and presets operate identically.
+              </p>
+            </div>
+
+            <ul class="list-disc list-inside space-y-1 text-xs text-gray-400 ml-1">
+              <li><strong>Candidate Stills Strip:</strong> Browse all community episode stills from TheTVDB and TMDb with vote ratings (e.g. ★ 5.0) and resolution badges (1920p, 3840p). Clicking any frame auto-saves it as the active episode background.</li>
+              <li><strong>Smart Auto-Pick:</strong> One-click evaluation across an entire season to auto-select the highest-rated 16:9 screencap for each episode.</li>
+              <li><strong>Single-Card Live Update:</strong> Use the <strong>"Update This Card"</strong> button in the episode details bar to upload that specific episode card directly to Plex without waiting for a full show re-render.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Screenshot 4: Detailed Generator Controls -->
+        <div class="space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 border-b border-gray-800 pb-3">
+            <h4 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+              4. Granular Generator Controls (Typography, Gradients & Logos)
+            </h4>
+            <span class="text-xs text-gray-500 font-mono">generator-styles-1.png / 2.png / 3.png</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="rounded-xl overflow-hidden border border-gray-800 bg-dark-950 flex flex-col">
+              <img src="screenshots/generator-styles-1.png" alt="Typography & Alignment Settings" class="w-full h-auto object-cover" loading="lazy" />
+              <div class="p-3 bg-dark-900 border-t border-gray-800 text-xs space-y-1 flex-1">
+                <strong class="text-white block font-medium">Typography & Alignment</strong>
+                <p class="text-gray-400 text-[11px] leading-relaxed">
+                  Choose from bundled Google Fonts or upload custom <code class="text-gray-300 font-mono">.ttf</code> / <code class="text-gray-300 font-mono">.otf</code> files. Configure title font size, subtitle format (<code class="text-gray-300 font-mono">S01 • EPISODE 1</code>, <code class="text-gray-300 font-mono">1x01</code>), casing, and 11 distinct alignment anchor positions.
+                </p>
+              </div>
+            </div>
+
+            <div class="rounded-xl overflow-hidden border border-gray-800 bg-dark-950 flex flex-col">
+              <img src="screenshots/generator-styles-2.png" alt="Gradients & Cinematic Overlays" class="w-full h-auto object-cover" loading="lazy" />
+              <div class="p-3 bg-dark-900 border-t border-gray-800 text-xs space-y-1 flex-1">
+                <strong class="text-white block font-medium">Gradients & Cinematic Overlays</strong>
+                <p class="text-gray-400 text-[11px] leading-relaxed">
+                  Adjust gradient angle, width, and opacity to ensure title legibility over complex backgrounds. Layer frosted glass background blurs, subtle 35mm film grain, and edge vignettes.
+                </p>
+              </div>
+            </div>
+
+            <div class="rounded-xl overflow-hidden border border-gray-800 bg-dark-950 flex flex-col">
+              <img src="screenshots/generator-styles-3.png" alt="ClearLogo Watermarks" class="w-full h-auto object-cover" loading="lazy" />
+              <div class="p-3 bg-dark-900 border-t border-gray-800 text-xs space-y-1 flex-1">
+                <strong class="text-white block font-medium">Logo Watermarks (ClearLogos)</strong>
+                <p class="text-gray-400 text-[11px] leading-relaxed">
+                  Optionally overlay official transparent show logos pulled from TheTVDB or TMDb. Supports custom corner placement, opacity adjustment, and monochrome conversion.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screenshot 5: Defaults & App Settings -->
+        <div class="space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 border-b border-gray-800 pb-3">
+            <h4 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+              5. Global Defaults & Application Settings
+            </h4>
+            <span class="text-xs text-gray-500 font-mono">detaulf-title-card.png & app-settings1.png</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="space-y-2">
+              <div class="rounded-xl overflow-hidden border border-gray-800 bg-dark-950">
+                <img src="screenshots/detaulf-title-card.png" alt="Global Default Title Card Preset Modal" class="w-full h-auto object-cover" loading="lazy" />
+              </div>
+              <h5 class="text-xs font-bold text-white uppercase tracking-wider">Universal Default Template</h5>
+              <p class="text-xs text-gray-400 leading-relaxed">
+                Define the baseline typography template (font, layout, subtitle format, colors) that will be applied automatically whenever new TV series are discovered on your server.
+              </p>
+            </div>
+
+            <div class="space-y-2">
+              <div class="rounded-xl overflow-hidden border border-gray-800 bg-dark-950">
+                <img src="screenshots/app-settings1.png" alt="Application Settings Modal" class="w-full h-auto object-cover" loading="lazy" />
+              </div>
+              <h5 class="text-xs font-bold text-white uppercase tracking-wider">Provider Priority & Automation Rules</h5>
+              <p class="text-xs text-gray-400 leading-relaxed">
+                Toggle automated AI suggestions, enable Smart Auto-Pick for candidate stills, and set your primary metadata provider priority (<strong class="text-emerald-300">TheTVDB</strong> vs <strong class="text-brand-300">TMDb</strong>) with automatic secondary fallback.
+              </p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Environment Variables Guide -->
+  <section id="config" class="py-14 border-t border-gray-800">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6">
+      <h2 class="text-xs font-bold uppercase tracking-wider text-brand-400 mb-1">Configuration</h2>
+      <h3 class="text-2xl font-bold text-white tracking-tight mb-6">Environment Variables (.env)</h3>
+
+      <div class="card-dark rounded-xl overflow-hidden mb-8">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-dark-900 border-b border-gray-800 text-gray-400 uppercase font-mono text-[10px]">
+              <tr>
+                <th class="py-2.5 px-3 sm:px-4">Variable</th>
+                <th class="py-2.5 px-2 sm:px-3">Required</th>
+                <th class="py-2.5 px-2 sm:px-3">Default</th>
+                <th class="py-2.5 px-3 sm:px-4">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-800 font-mono">
+              <tr>
+                <td class="py-2 px-3 sm:px-4 text-brand-400 font-bold">PLEX_URL</td>
+                <td class="py-2 px-2 sm:px-3 text-emerald-400 font-sans">Yes</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-400">http://localhost:32400</td>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-sans">URL of your Plex Media Server.</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 sm:px-4 text-brand-400 font-bold">PLEX_TOKEN</td>
+                <td class="py-2 px-2 sm:px-3 text-emerald-400 font-sans">Yes</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-500">—</td>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-sans">Your Plex authentication token (X-Plex-Token).</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 sm:px-4 text-brand-400 font-bold">PLEX_TV_LIBRARY</td>
+                <td class="py-2 px-2 sm:px-3 text-emerald-400 font-sans">Yes</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-400">TV Shows</td>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-sans">Exact name of your TV library section in Plex.</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 sm:px-4 text-brand-400 font-bold">TMDB_API_KEY</td>
+                <td class="py-2 px-2 sm:px-3 text-emerald-400 font-sans">Yes</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-500">—</td>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-sans">Free TMDb v3 API key for episode metadata & stills.</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 sm:px-4 text-emerald-400 font-bold">TVDB_API_KEY</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-400 font-sans">No</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-500">—</td>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-sans">TheTVDB v4 Project API Key for TVDB ordering and stills.</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 sm:px-4 text-emerald-400 font-bold">TVDB_PIN</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-400 font-sans">No</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-500">—</td>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-sans">TheTVDB Subscriber PIN (for subscriber accounts).</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 sm:px-4 text-emerald-400 font-bold">DEFAULT_METADATA_PROVIDER</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-400 font-sans">No</td>
+                <td class="py-2 px-2 sm:px-3 text-emerald-300">tvdb</td>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-sans">Preferred provider for stills & show status (<code class="text-xs text-brand-300">tvdb</code> or <code class="text-xs text-brand-300">tmdb</code>).</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 sm:px-4 text-purple-400 font-bold">GEMINI_API_KEY</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-400 font-sans">No</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-500">—</td>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-sans">Google Gemini API key for AI style suggestions (optional).</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 sm:px-4 text-rose-400 font-bold">ENABLE_AUTH</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-400 font-sans">No</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-400">false</td>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-sans">Set to <code class="text-xs text-rose-300">true</code> to require Plex OAuth sign-in.</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 sm:px-4 text-rose-400 font-bold">ALLOWED_USERS</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-400 font-sans">No</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-500">—</td>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-sans">Comma-separated Plex usernames/emails permitted to access.</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 sm:px-4 text-amber-400 font-bold">TEST_MODE</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-400 font-sans">No</td>
+                <td class="py-2 px-2 sm:px-3 text-amber-300">true</td>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-sans">Prevents uploading to Plex while testing layouts and fonts.</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-bold">PORT</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-400 font-sans">No</td>
+                <td class="py-2 px-2 sm:px-3 text-gray-400">8080</td>
+                <td class="py-2 px-3 sm:px-4 text-gray-300 font-sans">Port the web dashboard and backend API listens on.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Copyable Minimal .env -->
+      <div class="card-dark rounded-xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-gray-300 font-mono">.env</span>
+          <button 
+            onclick="navigator.clipboard.writeText(document.getElementById('env-snippet').innerText); this.innerText='Copied!'; setTimeout(() => this.innerText='Copy', 2000)"
+            class="text-[11px] bg-dark-800 hover:bg-dark-700 border border-gray-700 px-2 py-0.5 rounded text-gray-300 transition"
+          >
+            Copy
+          </button>
+        </div>
+        <pre id="env-snippet" class="text-xs text-gray-300 overflow-x-auto p-3 rounded-lg bg-dark-950 border border-gray-800/80 font-mono"><code>PLEX_URL=http://192.168.1.50:32400
+PLEX_TOKEN=your_plex_token
+PLEX_TV_LIBRARY=TV Shows
+TMDB_API_KEY=your_tmdb_api_key
+TVDB_API_KEY=your_tvdb_v4_key
+TVDB_PIN=your_subscriber_pin
+DEFAULT_METADATA_PROVIDER=tvdb
+ENABLE_AUTH=false
+TEST_MODE=true
+PORT=8080</code></pre>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Docker Setup -->
+  <section id="quickstart" class="py-14 border-t border-gray-800 bg-dark-900/40">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6">
+      <h2 class="text-xs font-bold uppercase tracking-wider text-brand-400 mb-1">Deployment</h2>
+      <h3 class="text-2xl font-bold text-white tracking-tight mb-6">Docker Compose</h3>
+
+      <div class="card-dark rounded-xl p-4 mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-gray-300 font-mono">docker-compose.yml</span>
+          <button 
+            onclick="navigator.clipboard.writeText(document.getElementById('docker-snippet').innerText); this.innerText='Copied!'; setTimeout(() => this.innerText='Copy', 2000)"
+            class="text-[11px] bg-dark-800 hover:bg-dark-700 border border-gray-700 px-2 py-0.5 rounded text-gray-300 transition"
+          >
+            Copy
+          </button>
+        </div>
+        <pre id="docker-snippet" class="text-xs text-gray-300 overflow-x-auto p-3 rounded-lg bg-dark-950 border border-gray-800/80 font-mono"><code>services:
+  plexcards:
+    image: ghcr.io/havok89/plexcards:latest
+    container_name: plexcards
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - PLEX_URL=http://192.168.1.50:32400
+      - PLEX_TOKEN=your_plex_token
+      - PLEX_TV_LIBRARY=TV Shows
+      - TMDB_API_KEY=your_tmdb_api_key
+      - TVDB_API_KEY=your_tvdb_v4_key
+      - TVDB_PIN=your_subscriber_pin
+      - DEFAULT_METADATA_PROVIDER=tvdb
+      - TEST_MODE=true
+    volumes:
+      - ./data:/app/data
+      - ./cache:/app/cache</code></pre>
+      </div>
+
+      <div class="flex items-center gap-3 text-xs text-gray-400">
+        <span>Run:</span>
+        <code class="bg-dark-850 px-2 py-1 rounded border border-gray-800 text-gray-200">docker compose up -d</code>
+        <span>and open</span>
+        <code class="bg-dark-850 px-2 py-1 rounded border border-gray-800 text-brand-400">http://localhost:8080</code>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-800 py-8 text-xs text-gray-500">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div>
+        PlexCards &bull; Open-source title card manager for Plex Media Server.
+      </div>
+      <div class="flex items-center gap-4">
+        <a href="https://github.com/havok89/PlexCards" target="_blank" class="hover:text-gray-300 transition">GitHub</a>
+        <a href="https://github.com/havok89/PlexCards/issues" target="_blank" class="hover:text-gray-300 transition">Issues</a>
+        <a href="#" class="hover:text-gray-300 transition">Top &uarr;</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

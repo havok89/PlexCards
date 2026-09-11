@@ -664,3 +664,130 @@ class SyncManager:
         """, (source, card_url, episode_rating_key))
         conn.commit()
         conn.close()
+
+    def sync_episode_card(
+        self,
+        rating_key: str,
+        season_number: int,
+        episode_number: int,
+        force_live: bool = False,
+        source: str = "auto",
+        custom_style: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Generate/download title card and upload directly to Plex for a single episode."""
+        show = get_show(rating_key)
+        if not show:
+            raise ValueError(f"Show with rating_key {rating_key} not found")
+
+        # Tell real-time listener to ignore feedback events for this show while we upload
+        try:
+            from backend.plex_listener import plex_listener
+            plex_listener.ignore_show(rating_key, duration=30.0)
+        except Exception:
+            pass
+
+        episodes = self.plex.get_show_episodes(rating_key)
+        target_ep = next((e for e in episodes if e.get("season_number") == season_number and e.get("episode_number") == episode_number), None)
+        if not target_ep:
+            raise ValueError(f"Episode S{season_number:02d}E{episode_number:02d} not found in Plex")
+
+        ep_key = target_ep["rating_key"]
+        is_test = TEST_MODE and not force_live
+        clean_title = "".join(c for c in show["title"] if c.isalnum() or c in (" ", "-", "_")).strip()
+        clean_ep_title = "".join(c for c in target_ep["title"] if c.isalnum() or c in (" ", "-", "_")).strip()
+
+        # Check if source is explicitly MediUX or Auto with an available MediUX card
+        mediux_card_url = None
+        if source in ("auto", "mediux") and show.get("mode") != "generator_only":
+            tmdb_id = show.get("tmdb_id")
+            if tmdb_id:
+                all_sets = self.mediux.get_show_sets(tmdb_id)
+                matched_set = None
+                if show.get("mediux_set_url"):
+                    target = str(show["mediux_set_url"]).strip()
+                    for s in all_sets:
+                        if s.get("set_url") == target or s.get("id") == target or f"/sets/{s.get('id')}" in target:
+                            matched_set = s
+                            break
+                if not matched_set and all_sets:
+                    matched_set = all_sets[0]
+
+                if matched_set:
+                    cards = matched_set.get("title_cards", {})
+                    card_key = f"{season_number}_{episode_number}"
+                    mediux_card_url = cards.get(card_key)
+
+        # Upload MediUX card if requested and available
+        if source == "mediux" or (source == "auto" and mediux_card_url):
+            if not mediux_card_url:
+                raise ValueError(f"No MediUX title card available for S{season_number:02d}E{episode_number:02d}")
+
+            if is_test:
+                show_test_dir = TEST_OUTPUT_DIR / clean_title
+                show_test_dir.mkdir(parents=True, exist_ok=True)
+                out_path = show_test_dir / f"S{season_number:02d}E{episode_number:02d}_mediux.jpg"
+                try:
+                    r = requests.get(mediux_card_url, timeout=10)
+                    if r.status_code == 200:
+                        with open(out_path, "wb") as f:
+                            f.write(r.content)
+                        logger.info(f"🧪 [TEST MODE] Saved MediUX card to {out_path}")
+                except Exception as e:
+                    logger.warning(f"Could not save test MediUX card: {e}")
+
+            self.plex.upload_episode_card(ep_key, mediux_card_url, force_live=force_live)
+            self._update_episode_card_status(ep_key, "mediux", mediux_card_url)
+            return {
+                "status": "success",
+                "test_mode": is_test,
+                "force_live": force_live,
+                "season_number": season_number,
+                "episode_number": episode_number,
+                "title": target_ep["title"],
+                "source": "mediux",
+                "message": f"🧪 Test Mode: Saved MediUX card locally to cache/test_output/" if is_test else f"Successfully updated S{season_number:02d}E{episode_number:02d} with MediUX card in Plex!"
+            }
+
+        # Otherwise render using Generator
+        style_to_use = dict(show)
+        if custom_style:
+            style_to_use.update(custom_style)
+
+        still_file = self.get_episode_backdrop_still(show, target_ep)
+        if not still_file:
+            raise ValueError(f"Could not obtain background still for S{season_number:02d}E{episode_number:02d}")
+
+        card_img = self.renderer.render(
+            base_image_path=still_file,
+            episode_title=target_ep["title"],
+            season_num=season_number,
+            episode_num=episode_number,
+            style_config=style_to_use,
+            logo_image_path=self.get_show_logo_path(show)
+        )
+
+        if is_test:
+            show_test_dir = TEST_OUTPUT_DIR / clean_title
+            show_test_dir.mkdir(parents=True, exist_ok=True)
+            out_path = show_test_dir / f"S{season_number:02d}E{episode_number:02d}_{clean_ep_title[:30]}.jpg"
+            card_img.save(out_path, quality=95)
+            logger.info(f"🧪 [TEST MODE] Saved generated card to {out_path}")
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            card_img.save(tmp.name, quality=95)
+            self.plex.upload_episode_card(ep_key, tmp.name, force_live=force_live)
+            Path(tmp.name).unlink(missing_ok=True)
+
+        card_status = "generator_preset" if show.get("mode") == "generator_only" else "generator_interim"
+        self._update_episode_card_status(ep_key, card_status)
+
+        return {
+            "status": "success",
+            "test_mode": is_test,
+            "force_live": force_live,
+            "season_number": season_number,
+            "episode_number": episode_number,
+            "title": target_ep["title"],
+            "source": card_status,
+            "message": f"🧪 Test Mode: Generated card saved locally to cache/test_output/" if is_test else f"Successfully updated S{season_number:02d}E{episode_number:02d} in Plex!"
+        }

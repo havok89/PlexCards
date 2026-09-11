@@ -1,5 +1,4 @@
-import React from 'react';
-import { Show } from '../../types';
+import { Episode, Show } from '../../types';
 import {
   Sliders, ExternalLink, Edit2, AlertTriangle,
   RefreshCw, X, Loader2, Sparkles, Send
@@ -7,11 +6,12 @@ import {
 
 interface StudioHeaderProps {
   show: Show;
+  currentEp?: Episode;
   onClose: () => void;
   onOpenTmdbModal: () => void;
   onOpenFixMatchModal: () => void;
-  updateScope: 'all' | 'missing';
-  onToggleScope: (scope: 'all' | 'missing') => void;
+  updateScope: 'all' | 'missing' | 'current';
+  onToggleScope: (scope: 'all' | 'missing' | 'current') => void;
   testMode: boolean;
   isForceLive: boolean;
   onToggleForceLive: (val: boolean) => void;
@@ -22,6 +22,7 @@ interface StudioHeaderProps {
 
 export const StudioHeader: React.FC<StudioHeaderProps> = ({
   show,
+  currentEp,
   onClose,
   onOpenTmdbModal,
   onOpenFixMatchModal,
@@ -144,7 +145,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
 
       {/* Header Action Controls */}
       <div className="flex items-center flex-wrap md:flex-nowrap gap-2 justify-between md:justify-end">
-        {/* Scope Toggle: All vs Missing */}
+        {/* Scope Toggle: All vs Missing vs This Ep */}
         <div className="flex items-center bg-dark-800 border border-gray-700 rounded-lg p-0.5 text-xs shrink-0">
           <button
             type="button"
@@ -169,6 +170,18 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             title="Only generate/download cards for episodes that are missing title cards"
           >
             Missing Only
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleScope('current')}
+            className={`px-2 sm:px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-medium transition ${
+              updateScope === 'current'
+                ? 'bg-brand-500 text-dark-950 font-bold shadow-sm'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+            title={currentEp ? `Update only S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')}` : 'Update only this episode'}
+          >
+            This Ep
           </button>
         </div>
 
@@ -215,8 +228,8 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                   ? `${testMode && !isForceLive ? 'Sim' : 'Updating'} ${applyProgress.current}/${applyProgress.total}`
                   : 'Updating...'
                 : testMode && !isForceLive
-                ? `Simulate (${updateScope === 'all' ? 'All' : 'Missing'})`
-                : `Update Plex (${updateScope === 'all' ? 'All' : 'Missing'})`}
+                ? `Simulate (${updateScope === 'all' ? 'All' : updateScope === 'missing' ? 'Missing' : currentEp ? `S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')}` : 'This Ep'})`
+                : `Update Plex (${updateScope === 'all' ? 'All' : updateScope === 'missing' ? 'Missing' : currentEp ? `S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')}` : 'This Ep'})`}
             </span>
           </button>
 

@@ -143,6 +143,42 @@ export const api = {
     return finalResult || { status: 'success', updated_cards: 0, message: 'Completed' };
   },
 
+  async applyEpisodeCard(
+    ratingKey: string,
+    seasonNumber: number,
+    episodeNumber: number,
+    options?: {
+      force_live?: boolean;
+      source?: 'generator' | 'mediux' | 'auto';
+      custom_style?: Partial<StyleConfig>;
+    }
+  ): Promise<{
+    status: string;
+    test_mode: boolean;
+    force_live: boolean;
+    season_number: number;
+    episode_number: number;
+    title: string;
+    source: string;
+    message: string;
+  }> {
+    const res = await fetch(
+      `/api/shows/${ratingKey}/episodes/${seasonNumber}/${episodeNumber}/apply`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options || {})
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to apply episode card' }));
+      throw new Error(err.detail || 'Failed to apply episode card');
+    }
+
+    return res.json();
+  },
+
   async getRawStillBlob(ratingKey: string, seasonNumber: number = 1, episodeNumber: number = 1): Promise<Blob> {
     const res = await fetch(`/api/shows/${ratingKey}/raw-still?season_number=${seasonNumber}&episode_number=${episodeNumber}&_t=${Date.now()}`);
     if (!res.ok) {

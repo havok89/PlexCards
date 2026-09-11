@@ -926,6 +926,33 @@ def apply_cards_to_show_stream(rating_key: str, payload: dict = Body(default={})
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
+@app.post("/api/shows/{rating_key}/episodes/{season_number}/{episode_number}/apply")
+def apply_card_to_episode(
+    rating_key: str,
+    season_number: int,
+    episode_number: int,
+    payload: dict = Body(default={})
+):
+    """Generate or download title card and upload directly to Plex for a single episode."""
+    force_live = payload.get("force_live", False)
+    source = payload.get("source", "auto")
+    custom_style = payload.get("custom_style")
+    try:
+        res = sync_mgr.sync_episode_card(
+            rating_key=rating_key,
+            season_number=season_number,
+            episode_number=episode_number,
+            force_live=force_live,
+            source=source,
+            custom_style=custom_style
+        )
+        return res
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Failed to apply card to S{season_number}E{episode_number}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/shows/{rating_key}/ai-style")
 def ai_suggest_style(rating_key: str, payload: dict = Body(...)):
     """Use Gemini AI to analyze the show and suggest typography & colors."""

@@ -60,7 +60,8 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   const [availableFonts, setAvailableFonts] = useState<{ name: string; type: string; filename: string }[]>([]);
   const [isUploadingFont, setIsUploadingFont] = useState<boolean>(false);
   const [isSavedJustNow, setIsSavedJustNow] = useState<boolean>(false);
-  const [updateScope, setUpdateScope] = useState<'all' | 'missing'>('all');
+  const [updateScope, setUpdateScope] = useState<'all' | 'missing' | 'current'>('all');
+  const [isApplyingSingle, setIsApplyingSingle] = useState<boolean>(false);
   const [isForceLive, setIsForceLive] = useState<boolean>(false);
   const [previewTab, setPreviewTab] = useState<'mediux' | 'generator'>('mediux');
   const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(initialHasGeminiKey);
@@ -570,7 +571,73 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     }
   };
 
+  const currentEp = episodes[selectedEpIndex];
+
+  const handleApplySingle = async () => {
+    if (!currentEp) return;
+    setIsApplyingSingle(true);
+    try {
+      // 1. Auto-save current styling first so preview matches what gets generated
+      await api.saveStyle(activeShow.rating_key, {
+        ...styleConfig,
+        subheading_font_family: styleConfig.subheading_font_family || '',
+        ai_prompt: aiReasoning
+      });
+
+      // 2. Apply single episode card
+      const res = await api.applyEpisodeCard(
+        activeShow.rating_key,
+        currentEp.season_number,
+        currentEp.episode_number,
+        {
+          force_live: isForceLive,
+          source: isShowingMediux ? 'mediux' : 'generator',
+          custom_style: styleConfig
+        }
+      );
+
+      const epLabel = `S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')}`;
+      if (res.test_mode) {
+        showToast({
+          type: 'info',
+          title: '🧪 Test Mode Simulation',
+          message: `Rendered ${epLabel} locally to cache/test_output/. Check 'Live Upload' to push to Plex.`
+        });
+      } else {
+        showToast({
+          type: 'success',
+          title: 'Plex Card Updated',
+          message: `Successfully updated ${epLabel} in Plex!`
+        });
+      }
+
+      // Update local episode in state
+      setEpisodes((prev) =>
+        prev.map((ep) =>
+          ep.rating_key === currentEp.rating_key
+            ? { ...ep, card_source: res.source }
+            : ep
+        )
+      );
+
+      onShowUpdated();
+    } catch (e: any) {
+      showToast({
+        type: 'error',
+        title: 'Update Failed',
+        message: e.message || String(e)
+      });
+    } finally {
+      setIsApplyingSingle(false);
+    }
+  };
+
   const handleApply = async () => {
+    if (updateScope === 'current') {
+      await handleApplySingle();
+      return;
+    }
+
     setIsApplying(true);
     setApplyProgress(null);
     try {
@@ -598,7 +665,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         showToast({
           type: 'info',
           title: '🧪 Test Mode Simulation',
-          message: `Rendered ${res.updated_cards} cards${posterNote} locally to cache/test_output/. Check 'Push Live to Plex' to upload.`
+          message: `Rendered ${res.updated_cards} cards${posterNote} locally to cache/test_output/. Check 'Live Upload' to push to Plex.`
         });
       } else {
         showToast({
@@ -619,8 +686,6 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
       setApplyProgress(null);
     }
   };
-
-  const currentEp = episodes[selectedEpIndex];
 
   // Determine which set ID is currently selected (manual choice or auto-pick)
   const selectedSetId = activeShow.mediux_set_url
@@ -681,6 +746,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         {/* Modal Header */}
         <StudioHeader
           show={activeShow}
+          currentEp={currentEp}
           onClose={onClose}
           onOpenTmdbModal={handleOpenTmdbModal}
           onOpenFixMatchModal={() => setIsPlexFixMatchConfirmOpen(true)}
@@ -689,7 +755,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           testMode={testMode}
           isForceLive={isForceLive}
           onToggleForceLive={setIsForceLive}
-          isApplying={isApplying}
+          isApplying={isApplying || isApplyingSingle}
           applyProgress={applyProgress}
           onApplyCards={handleApply}
         />
@@ -717,6 +783,10 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
               setPreviewTab('generator');
               setStillNonce((n) => n + 1);
             }}
+            onApplySingleCard={handleApplySingle}
+            isApplyingSingle={isApplyingSingle}
+            testMode={testMode}
+            isForceLive={isForceLive}
           />
 
           {/* Right Column: Source Modes, MediUX Sets & Generator Styling */}

@@ -5,7 +5,7 @@ import { useToast } from '../../context/ToastContext';
 import {
   Eye, Zap, Wand2, Loader2, Sparkles, FlaskConical,
   Tv, Split, SlidersHorizontal, ChevronLeft, ChevronRight,
-  Film, Check
+  Film, Check, Send
 } from 'lucide-react';
 
 interface StudioPreviewCanvasProps {
@@ -25,6 +25,10 @@ interface StudioPreviewCanvasProps {
   currentEp?: Episode;
   hasGeminiKey?: boolean;
   onStillChanged?: () => void;
+  onApplySingleCard?: () => void;
+  isApplyingSingle?: boolean;
+  testMode?: boolean;
+  isForceLive?: boolean;
 }
 
 export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
@@ -43,7 +47,11 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
   previewUrl,
   currentEp,
   hasGeminiKey = true,
-  onStillChanged
+  onStillChanged,
+  onApplySingleCard,
+  isApplyingSingle,
+  testMode,
+  isForceLive
 }) => {
   const { showToast } = useToast();
 
@@ -600,8 +608,8 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
         </div>
       )}
 
-      {/* Candidate Stills Strip (Magic Frame Carousel) */}
-      {currentEp && (Boolean(show.tmdb_id) || Boolean(show.tvdb_id)) && (
+      {/* Candidate Stills Strip (Magic Frame Carousel - Generator View Only) */}
+      {currentEp && (Boolean(show.tmdb_id) || Boolean(show.tvdb_id)) && !isShowingMediux && (
         <div className="bg-dark-900 border border-gray-800 rounded-xl p-3 flex flex-col gap-2.5 shrink-0">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
@@ -705,16 +713,52 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
         </div>
       )}
 
-      {/* Episode Details Bar */}
+      {/* Episode Details Bar with Quick Update Button */}
       {currentEp && (
-        <div className="bg-dark-900 border border-gray-800 rounded-xl p-2.5 sm:p-3 text-[11px] sm:text-xs text-gray-400 flex items-center justify-between gap-2 shrink-0">
-          <span className="truncate mr-2">
-            Episode: <strong className="text-white">{currentEp.title}</strong>
-          </span>
-          <span className="shrink-0">
-            Season <strong className="text-white">{currentEp.season_number}</strong> • Episode{' '}
-            <strong className="text-white">{currentEp.episode_number}</strong>
-          </span>
+        <div className="bg-dark-900 border border-gray-800 rounded-xl p-2.5 sm:p-3 text-[11px] sm:text-xs text-gray-400 flex items-center justify-between gap-3 shrink-0 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2 truncate mr-1 min-w-0">
+            <span className="truncate">
+              Episode: <strong className="text-white">{currentEp.title}</strong>
+            </span>
+            <span className="text-gray-600 hidden sm:inline">•</span>
+            <span className="shrink-0 hidden sm:inline">
+              Season <strong className="text-white">{currentEp.season_number}</strong> • Episode{' '}
+              <strong className="text-white">{currentEp.episode_number}</strong>
+            </span>
+          </div>
+
+          {onApplySingleCard && (
+            <button
+              type="button"
+              onClick={onApplySingleCard}
+              disabled={isApplyingSingle || isEpisodesLoading}
+              className={`font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5 shadow shrink-0 ${
+                testMode && !isForceLive
+                  ? 'bg-amber-500 hover:bg-amber-400 text-dark-950'
+                  : 'bg-brand-500 hover:bg-brand-400 text-dark-950 shadow-brand-500/20'
+              } disabled:opacity-50`}
+              title={
+                testMode && !isForceLive
+                  ? `Simulate title card generation for S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')} (Test Mode)`
+                  : `Upload title card for S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')} directly to Plex`
+              }
+            >
+              {isApplyingSingle ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              ) : testMode && !isForceLive ? (
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <Send className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span className="whitespace-nowrap">
+                {isApplyingSingle
+                  ? 'Updating Card...'
+                  : testMode && !isForceLive
+                  ? `Simulate This Card (S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')})`
+                  : `Update This Card (S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')})`}
+              </span>
+            </button>
+          )}
         </div>
       )}
     </div>
