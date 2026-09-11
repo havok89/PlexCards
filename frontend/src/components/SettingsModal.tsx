@@ -27,6 +27,8 @@ interface SettingsModalProps {
   tvLibrary: string;
   listenerConnected?: boolean;
   hasGeminiKey?: boolean;
+  hasTvdbKey?: boolean;
+  hasTmdbKey?: boolean;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -35,11 +37,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   testMode,
   tvLibrary,
   listenerConnected = false,
-  hasGeminiKey = true
+  hasGeminiKey = true,
+  hasTvdbKey = false,
+  hasTmdbKey = true
 }) => {
   const { showToast } = useToast();
   const [autoGemini, setAutoGemini] = useState<boolean>(true);
   const [autoSmartPick, setAutoSmartPick] = useState<boolean>(true);
+  const [providerPriority, setProviderPriority] = useState<string>('tvdb');
   const [defaultMode, setDefaultMode] = useState<string>('ignored');
   const [preferredCreators, setPreferredCreators] = useState<string>('');
   const [newCreatorInput, setNewCreatorInput] = useState<string>('');
@@ -70,6 +75,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setAutoSmartPick(s.auto_smart_pick_stills !== 'false');
         setDefaultMode(s.default_new_show_mode || 'ignored');
         setPreferredCreators(s.preferred_mediux_creators || '');
+        setProviderPriority(s.metadata_provider_priority || 'tvdb');
       })
       .catch((err) => console.error('Failed to load settings:', err))
       .finally(() => {
@@ -291,6 +297,80 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         autoSmartPick ? 'translate-x-5' : 'translate-x-0'
                       }`}
                     />
+                  </button>
+                </div>
+              </div>
+
+              {/* Section: Metadata & Still Provider Priority */}
+              <div className="bg-dark-850 border border-gray-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-brand-400" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-brand-400">
+                      Primary Metadata & Still Provider
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${hasTvdbKey ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>
+                      TVDB: {hasTvdbKey ? 'Active' : 'Not Configured'}
+                    </span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${hasTmdbKey !== false ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>
+                      TMDb: {hasTmdbKey !== false ? 'Active' : 'Not Configured'}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  Select which service is queried first when searching for episode stills (screencaps), titles, and artwork. If the primary provider has no still, the secondary provider is automatically used as a fallback.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProviderPriority('tvdb');
+                      handleSaveSetting('metadata_provider_priority', 'tvdb');
+                    }}
+                    className={`p-3 rounded-lg border text-left transition flex flex-col justify-between gap-1.5 ${
+                      providerPriority === 'tvdb'
+                        ? 'bg-brand-500/10 border-brand-500 text-white'
+                        : 'bg-dark-900 border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        TheTVDB (Recommended)
+                        {providerPriority === 'tvdb' && <CheckCircle2 className="w-3.5 h-3.5 text-brand-400" />}
+                      </span>
+                      <span className="text-[10px] text-brand-300 font-mono">TVDB v4</span>
+                    </div>
+                    <p className="text-[11px] text-gray-400">
+                      Best for libraries managed with Sonarr and Plex TVDB ordering. Highest episode screencap coverage.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProviderPriority('tmdb');
+                      handleSaveSetting('metadata_provider_priority', 'tmdb');
+                    }}
+                    className={`p-3 rounded-lg border text-left transition flex flex-col justify-between gap-1.5 ${
+                      providerPriority === 'tmdb'
+                        ? 'bg-brand-500/10 border-brand-500 text-white'
+                        : 'bg-dark-900 border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        The Movie Database
+                        {providerPriority === 'tmdb' && <CheckCircle2 className="w-3.5 h-3.5 text-brand-400" />}
+                      </span>
+                      <span className="text-[10px] text-blue-300 font-mono">TMDb</span>
+                    </div>
+                    <p className="text-[11px] text-gray-400">
+                      Best for libraries configured with native TMDb episode ordering and community quality ratings.
+                    </p>
                   </button>
                 </div>
               </div>

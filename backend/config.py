@@ -14,6 +14,11 @@ PLEX_TV_LIBRARY = os.getenv("PLEX_TV_LIBRARY", "TV Shows")
 # TMDb
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 
+# TheTVDB (TVDB API v4)
+TVDB_API_KEY = os.getenv("TVDB_API_KEY", "")
+TVDB_PIN = os.getenv("TVDB_PIN", "")
+DEFAULT_METADATA_PROVIDER = os.getenv("DEFAULT_METADATA_PROVIDER", "tvdb" if TVDB_API_KEY else "tmdb")
+
 # MediUX
 MEDIUX_API_TOKEN = os.getenv("MEDIUX_API_TOKEN", "")
 

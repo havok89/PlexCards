@@ -7,6 +7,7 @@ import requests
 from backend.db import init_db, get_db, upsert_show, get_show, get_all_shows, get_setting, get_show_season_posters, record_season_poster
 from backend.plex_client import PlexClient
 from backend.tmdb_client import TMDbClient
+from backend.tvdb_client import TVDbClient
 from backend.mediux_client import MediuxClient
 from backend.generator.renderer import TitleCardRenderer
 from backend.config import CACHE_DIR, STILLS_DIR, TEST_MODE, TEST_OUTPUT_DIR
@@ -18,49 +19,87 @@ class SyncManager:
         init_db()
         self.plex = PlexClient()
         self.tmdb = TMDbClient()
+        self.tvdb = TVDbClient()
         self.mediux = MediuxClient()
         self.renderer = TitleCardRenderer()
 
     def get_episode_backdrop_still(self, show: Dict[str, Any], ep: Dict[str, Any]) -> Optional[Path]:
         """
         Cascade to find or generate the best available still image for an episode card:
-        1. TMDb official episode promotional still
-        2. Clean show backdrop art (from TMDb or Plex show art)
-        3. Plex episode video thumbnail (last-resort fallback if no clean show art exists)
-        4. Clean cinematic dark canvas
+        Prioritizes TVDB or TMDb based on user settings (defaulting to tvdb).
+        1. Primary provider episode still (or user custom selected candidate still)
+        2. Secondary provider episode still
+        3. Clean show backdrop art (from TVDB / TMDb or Plex show art)
+        4. Plex episode video thumbnail (last-resort fallback)
+        5. Clean cinematic dark canvas
         """
+        tvdb_id = show.get("tvdb_id")
         tmdb_id = show.get("tmdb_id")
         s_num = ep.get("season_number")
         e_num = ep.get("episode_number")
+        rk = str(show.get("rating_key", ""))
+        priority = get_setting("metadata_provider_priority", "tvdb").lower()
 
-        # 1. Official TMDb episode still (or user custom selected candidate still)
-        if tmdb_id and s_num is not None and e_num is not None:
-            try:
-                from backend.db import get_episode_still_override, get_setting, set_episode_still_override
-                rk = str(show.get("rating_key", ""))
-                override_path = get_episode_still_override(rk, s_num, e_num)
-                if not override_path and rk:
-                    auto_smart_pick = get_setting("auto_smart_pick_stills", "true").lower() == "true"
-                    if auto_smart_pick:
-                        candidate_stills = self.tmdb.get_episode_stills_list(tmdb_id, s_num, e_num)
-                        if candidate_stills:
-                            best_still = candidate_stills[0]["file_path"]
-                            override_path = best_still
-                            set_episode_still_override(rk, s_num, e_num, best_still)
-                still_file = self.tmdb.get_episode_still(tmdb_id, s_num, e_num, specific_still_path=override_path)
-                if still_file and still_file.exists():
-                    return still_file
-            except Exception as e:
-                logger.warning(f"Failed to fetch TMDb still for {show.get('title')} S{s_num:02d}E{e_num:02d}: {e}")
+        # Check for user-selected override first
+        from backend.db import get_episode_still_override, set_episode_still_override
+        override_path = get_episode_still_override(rk, s_num, e_num) if (rk and s_num is not None and e_num is not None) else None
 
-        # 2. Clean Show backdrop art (from TMDb or Plex show art)
-        # We prioritize high-resolution, textless show backdrop art over Plex thumbnails,
-        # because Plex thumbnails frequently contain old title cards from other programs or low-res captures.
+        # 1. If override is an explicit TVDB URL
+        if override_path and (override_path.startswith("http://") or override_path.startswith("https://")) and tvdb_id:
+            still_file = self.tvdb.get_episode_still(int(tvdb_id), s_num, e_num, specific_still_url=override_path)
+            if still_file and still_file.exists():
+                return still_file
+
+        # 2. If override is a TMDb file path
+        if override_path and not override_path.startswith("http") and tmdb_id:
+            still_file = self.tmdb.get_episode_still(int(tmdb_id), s_num, e_num, specific_still_path=override_path)
+            if still_file and still_file.exists():
+                return still_file
+
+        def _fetch_tvdb_still() -> Optional[Path]:
+            if tvdb_id and s_num is not None and e_num is not None and self.tvdb.is_configured:
+                try:
+                    target_url = override_path if (override_path and override_path.startswith("http")) else None
+                    still_file = self.tvdb.get_episode_still(int(tvdb_id), s_num, e_num, specific_still_url=target_url)
+                    if still_file and still_file.exists():
+                        return still_file
+                except Exception as e:
+                    logger.warning(f"Failed to fetch TVDB still for {show.get('title')} S{s_num:02d}E{e_num:02d}: {e}")
+            return None
+
+        def _fetch_tmdb_still() -> Optional[Path]:
+            if tmdb_id and s_num is not None and e_num is not None and self.tmdb.api_key:
+                try:
+                    target_still = override_path if (override_path and not override_path.startswith("http")) else None
+                    if not target_still and rk:
+                        auto_smart_pick = get_setting("auto_smart_pick_stills", "true").lower() == "true"
+                        if auto_smart_pick:
+                            candidate_stills = self.tmdb.get_episode_stills_list(int(tmdb_id), s_num, e_num)
+                            if candidate_stills:
+                                best_still = candidate_stills[0]["file_path"]
+                                target_still = best_still
+                                set_episode_still_override(rk, s_num, e_num, best_still)
+                    still_file = self.tmdb.get_episode_still(int(tmdb_id), s_num, e_num, specific_still_path=target_still)
+                    if still_file and still_file.exists():
+                        return still_file
+                except Exception as e:
+                    logger.warning(f"Failed to fetch TMDb still for {show.get('title')} S{s_num:02d}E{e_num:02d}: {e}")
+            return None
+
+        # Execute in order of configured provider priority
+        primary_fn = _fetch_tvdb_still if priority == "tvdb" else _fetch_tmdb_still
+        secondary_fn = _fetch_tmdb_still if priority == "tvdb" else _fetch_tvdb_still
+
+        still = primary_fn() or secondary_fn()
+        if still and still.exists():
+            return still
+
+        # 3. Clean Show backdrop art (from TMDb or Plex show art)
         show_key = show.get("rating_key", "default")
         backdrop_url = show.get("backdrop_url")
         if not backdrop_url and tmdb_id:
             try:
-                details = self.tmdb.get_show_details(tmdb_id)
+                details = self.tmdb.get_show_details(int(tmdb_id))
                 if details:
                     backdrop_url = details.get("backdrop_url")
             except Exception:
@@ -88,7 +127,7 @@ class SyncManager:
             except Exception as e:
                 logger.warning(f"Could not download show backdrop for show {show_key}: {e}")
 
-        # 3. Plex episode thumbnail (fallback only if no TMDb episode still or show backdrop exists)
+        # 4. Plex episode thumbnail (fallback only if no provider episode still or show backdrop exists)
         ep_key = ep.get("rating_key")
         thumb_url = ep.get("thumb_url")
         if thumb_url and ep_key:
@@ -105,7 +144,7 @@ class SyncManager:
             except Exception as e:
                 logger.warning(f"Could not download Plex thumbnail for episode {ep_key}: {e}")
 
-        # 4. Cinematic dark canvas fallback
+        # 5. Cinematic dark canvas fallback
         canvas_path = STILLS_DIR / "generic_canvas.jpg"
         if not canvas_path.exists():
             try:
@@ -118,27 +157,66 @@ class SyncManager:
         return canvas_path
 
     def get_show_logo_path(self, show: Dict[str, Any]) -> Optional[Path]:
-        """Fetch or return cached transparent PNG logo for a show."""
+        """Fetch or return cached transparent PNG logo for a show (checking TVDB & TMDb according to priority)."""
         tmdb_id = show.get("tmdb_id")
-        if tmdb_id:
-            try:
-                return self.tmdb.get_show_logo(int(tmdb_id))
-            except Exception as e:
-                logger.warning(f"Could not load logo for show {show.get('title')}: {e}")
+        tvdb_id = show.get("tvdb_id")
+        priority = get_setting("metadata_provider_priority", "tvdb").lower()
+
+        def _try_tmdb() -> Optional[Path]:
+            if tmdb_id:
+                try:
+                    return self.tmdb.get_show_logo(int(tmdb_id))
+                except Exception as e:
+                    logger.warning(f"Could not load TMDb logo for {show.get('title')}: {e}")
+            return None
+
+        def _try_tvdb() -> Optional[Path]:
+            if tvdb_id and self.tvdb.is_configured:
+                try:
+                    return self.tvdb.get_show_logo(int(tvdb_id))
+                except Exception as e:
+                    logger.warning(f"Could not load TVDB logo for {show.get('title')}: {e}")
+            return None
+
+        primary_logo = _try_tvdb if priority == "tvdb" else _try_tmdb
+        secondary_logo = _try_tmdb if priority == "tvdb" else _try_tvdb
+
+        logo = primary_logo() or secondary_logo()
+        if logo and logo.exists():
+            return logo
         return None
 
     def scan_and_index_library(self):
-        """Scan all TV shows from Plex and store in database. Auto-matches shows with TMDb if Plex has no TMDb ID."""
+        """Scan all TV shows from Plex and store in database. Cross-references TVDB and TMDb IDs automatically."""
         shows = self.plex.get_all_shows()
         logger.info(f"Indexing {len(shows)} shows from Plex...")
         
         for s in shows:
-            # If Plex did not provide a TMDb ID (e.g. local:// guid), attempt automatic TMDb search match
+            # 1. If show has tvdb_id but no tmdb_id, resolve tmdb_id via TVDB remote IDs (enables MediUX!)
+            if s.get("tvdb_id") and not s.get("tmdb_id") and self.tvdb.is_configured:
+                try:
+                    resolved_tmdb = self.tvdb.resolve_tmdb_id(int(s["tvdb_id"]))
+                    if resolved_tmdb:
+                        s["tmdb_id"] = resolved_tmdb
+                        logger.info(f"🔗 Auto-resolved TMDb ID {resolved_tmdb} for '{s['title']}' via TVDB ID {s['tvdb_id']}")
+                except Exception as e:
+                    logger.warning(f"Could not resolve TMDb ID from TVDB for '{s['title']}': {e}")
+
+            # 2. If show has tmdb_id but no tvdb_id, resolve tvdb_id via TVDB remote ID lookup
+            if s.get("tmdb_id") and not s.get("tvdb_id") and self.tvdb.is_configured:
+                try:
+                    resolved_tvdb = self.tvdb.resolve_tvdb_id_from_remote(str(s["tmdb_id"]))
+                    if resolved_tvdb:
+                        s["tvdb_id"] = resolved_tvdb
+                        logger.info(f"🔗 Auto-resolved TVDB ID {resolved_tvdb} for '{s['title']}' via TMDb ID {s['tmdb_id']}")
+                except Exception as e:
+                    logger.warning(f"Could not resolve TVDB ID from TMDb for '{s['title']}': {e}")
+
+            # 3. If neither provided, attempt automatic search match
             if not s.get("tmdb_id") and s.get("title"):
                 try:
                     search_results = self.tmdb.search_shows(s["title"], year=s.get("year"))
                     if not search_results and s.get("year"):
-                        # Fallback without year constraint
                         search_results = self.tmdb.search_shows(s["title"])
                     if search_results:
                         top = search_results[0]
@@ -176,30 +254,49 @@ class SyncManager:
         return len(shows)
 
     def sync_show_statuses(self):
-        """Fetch and update TV show broadcast status (Returning Series, Ended, Canceled) from TMDb."""
+        """Fetch and update TV show broadcast status (Returning Series, Continuing, Ended, Canceled) respecting provider priority."""
         from concurrent.futures import ThreadPoolExecutor
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("SELECT rating_key, tmdb_id FROM shows WHERE tmdb_id IS NOT NULL")
+        cursor.execute("SELECT rating_key, tmdb_id, tvdb_id FROM shows")
         shows_to_check = [dict(r) for r in cursor.fetchall()]
         conn.close()
 
-        if not shows_to_check or not self.tmdb.api_key:
+        if not shows_to_check:
             return
 
+        priority = get_setting("metadata_provider_priority", "tvdb").lower()
+
         def _fetch_status(item):
-            rk, tid = item["rating_key"], item["tmdb_id"]
-            try:
-                url = f"{self.tmdb.BASE_URL}/tv/{tid}?api_key={self.tmdb.api_key}"
-                r = requests.get(url, timeout=6)
-                if r.status_code == 200:
-                    d = r.json()
-                    st = d.get("status")
-                    if st:
-                        return rk, st
-            except Exception:
-                pass
-            return rk, None
+            rk = item["rating_key"]
+            tid = item.get("tmdb_id")
+            tv_id = item.get("tvdb_id")
+
+            def _get_tvdb_status():
+                if tv_id and self.tvdb.is_configured:
+                    try:
+                        st = self.tvdb.get_series_status(int(tv_id))
+                        if st:
+                            return st
+                    except Exception:
+                        pass
+                return None
+
+            def _get_tmdb_status():
+                if tid and self.tmdb.api_key:
+                    try:
+                        url = f"{self.tmdb.BASE_URL}/tv/{tid}?api_key={self.tmdb.api_key}"
+                        r = requests.get(url, timeout=6)
+                        if r.status_code == 200:
+                            return r.json().get("status")
+                    except Exception:
+                        pass
+                return None
+
+            primary = _get_tvdb_status if priority == "tvdb" else _get_tmdb_status
+            secondary = _get_tmdb_status if priority == "tvdb" else _get_tvdb_status
+            st = primary() or secondary()
+            return rk, st
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             results = list(executor.map(_fetch_status, shows_to_check))
@@ -213,7 +310,7 @@ class SyncManager:
                 updated_count += 1
         conn.commit()
         conn.close()
-        logger.info(f"Updated status for {updated_count} shows from TMDb.")
+        logger.info(f"Updated status for {updated_count} shows (prioritizing {priority.upper()}).")
 
     def sync_show_generator(self, rating_key: str, force_all: bool = True, force_live: bool = False):
         """Generator that yields progress events while updating cards and posters for a show."""

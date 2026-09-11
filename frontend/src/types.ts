@@ -1,6 +1,7 @@
 export interface Show {
   rating_key: string;
   tmdb_id: number;
+  tvdb_id?: number;
   title: string;
   year?: number;
   poster_url?: string;
@@ -104,6 +105,8 @@ export interface AppConfig {
   listener_connected?: boolean;
   auth_enabled?: boolean;
   has_gemini_key?: boolean;
+  has_tvdb_key?: boolean;
+  has_tmdb_key?: boolean;
 }
 
 export interface AuthUser {
@@ -144,6 +147,7 @@ export interface CandidateStill {
   quality_score: number;
   is_top_pick?: boolean;
   is_selected?: boolean;
+  provider?: 'tvdb' | 'tmdb';
 }
 
 export interface StillsResponse {

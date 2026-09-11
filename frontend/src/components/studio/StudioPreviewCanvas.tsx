@@ -601,7 +601,7 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
       )}
 
       {/* Candidate Stills Strip (Magic Frame Carousel) */}
-      {currentEp && Boolean(show.tmdb_id) && (
+      {currentEp && (Boolean(show.tmdb_id) || Boolean(show.tvdb_id)) && (
         <div className="bg-dark-900 border border-gray-800 rounded-xl p-3 flex flex-col gap-2.5 shrink-0">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
@@ -634,11 +634,11 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
           {isStillsLoading ? (
             <div className="flex items-center justify-center py-4 text-xs text-gray-400 gap-2">
               <Loader2 className="w-4 h-4 animate-spin text-brand-500" />
-              <span>Loading candidate stills from TMDb...</span>
+              <span>Loading candidate stills...</span>
             </div>
           ) : candidateStills.length === 0 ? (
             <div className="text-[11px] text-gray-500 italic py-1">
-              No alternate stills available from TMDb for this episode.
+              No candidate stills available for this episode.
             </div>
           ) : (
             <div className="flex items-center gap-2.5 overflow-x-auto -mx-1.5 px-1.5 py-2 scrollbar-thin scrollbar-thumb-gray-800">
@@ -678,6 +678,17 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
                     {!isSelected && still.is_top_pick && (
                       <div className="absolute top-1 left-1 bg-purple-600/90 text-white text-[8px] font-semibold px-1 py-0.5 rounded shadow backdrop-blur-sm">
                         ★ BEST
+                      </div>
+                    )}
+
+                    {/* Provider Tag */}
+                    {still.provider && (
+                      <div className={`absolute top-1 right-1 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow backdrop-blur-sm ${
+                        still.provider === 'tvdb'
+                          ? 'bg-emerald-800/90 text-emerald-200 border border-emerald-600/40'
+                          : 'bg-blue-800/90 text-blue-200 border border-blue-600/40'
+                      }`}>
+                        {still.provider.toUpperCase()}
                       </div>
                     )}
 

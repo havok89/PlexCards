@@ -212,6 +212,8 @@ export const App: React.FC = () => {
           tvLibrary={config.tv_library}
           listenerConnected={config.listener_connected}
           hasGeminiKey={config.has_gemini_key}
+          hasTvdbKey={config.has_tvdb_key}
+          hasTmdbKey={config.has_tmdb_key}
         />
       )}
     </div>

@@ -17,6 +17,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS shows (
         rating_key TEXT PRIMARY KEY,
         tmdb_id INTEGER,
+        tvdb_id INTEGER,
         title TEXT NOT NULL,
         year INTEGER,
         poster_url TEXT,
@@ -36,6 +37,8 @@ def init_db():
     show_columns = [col[1] for col in cursor.fetchall()]
     if "status" not in show_columns:
         cursor.execute("ALTER TABLE shows ADD COLUMN status TEXT DEFAULT 'Returning Series'")
+    if "tvdb_id" not in show_columns:
+        cursor.execute("ALTER TABLE shows ADD COLUMN tvdb_id INTEGER")
 
     # Show styling configuration (for generator)
     cursor.execute("""
@@ -160,11 +163,13 @@ def init_db():
         value TEXT
     )
     """)
+    from backend.config import DEFAULT_METADATA_PROVIDER
     default_settings = {
         "auto_gemini_suggestion": "true",
         "default_new_show_mode": "ignored",
         "preferred_mediux_creators": "",
-        "auto_smart_pick_stills": "true"
+        "auto_smart_pick_stills": "true",
+        "metadata_provider_priority": DEFAULT_METADATA_PROVIDER or "tvdb"
     }
     for k, v in default_settings.items():
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
@@ -257,14 +262,15 @@ def upsert_show(show_data: Dict[str, Any]):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-    INSERT INTO shows (rating_key, tmdb_id, title, year, poster_url, backdrop_url, total_seasons, total_episodes, mode, mediux_set_url, status, updated_at)
-    VALUES (:rating_key, :tmdb_id, :title, :year, :poster_url, :backdrop_url, :total_seasons, :total_episodes, 
+    INSERT INTO shows (rating_key, tmdb_id, tvdb_id, title, year, poster_url, backdrop_url, total_seasons, total_episodes, mode, mediux_set_url, status, updated_at)
+    VALUES (:rating_key, :tmdb_id, :tvdb_id, :title, :year, :poster_url, :backdrop_url, :total_seasons, :total_episodes, 
             COALESCE((SELECT mode FROM shows WHERE rating_key = :rating_key), :default_mode),
             COALESCE((SELECT mediux_set_url FROM shows WHERE rating_key = :rating_key), NULL),
             COALESCE(:status, (SELECT status FROM shows WHERE rating_key = :rating_key), 'Returning Series'),
             CURRENT_TIMESTAMP)
     ON CONFLICT(rating_key) DO UPDATE SET
-        tmdb_id = excluded.tmdb_id,
+        tmdb_id = COALESCE(excluded.tmdb_id, shows.tmdb_id),
+        tvdb_id = COALESCE(excluded.tvdb_id, shows.tvdb_id),
         title = excluded.title,
         year = excluded.year,
         poster_url = COALESCE(excluded.poster_url, shows.poster_url),
@@ -276,6 +282,7 @@ def upsert_show(show_data: Dict[str, Any]):
     """, {
         "rating_key": str(show_data["rating_key"]),
         "tmdb_id": show_data.get("tmdb_id"),
+        "tvdb_id": show_data.get("tvdb_id"),
         "title": show_data["title"],
         "year": show_data.get("year"),
         "poster_url": show_data.get("poster_url"),
@@ -549,6 +556,28 @@ def update_show_tmdb_id(
         updated_at = CURRENT_TIMESTAMP
     WHERE rating_key = ?
     """, (tmdb_id, poster_url, backdrop_url, status, rating_key))
+    conn.commit()
+    conn.close()
+
+def update_show_tvdb_id(
+    rating_key: str, 
+    tvdb_id: Optional[int], 
+    poster_url: Optional[str] = None, 
+    backdrop_url: Optional[str] = None,
+    status: Optional[str] = None
+):
+    """Update TheTVDB ID and optionally poster/backdrop URLs and status for a show."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+    UPDATE shows 
+    SET tvdb_id = ?, 
+        poster_url = COALESCE(?, poster_url), 
+        backdrop_url = COALESCE(?, backdrop_url), 
+        status = COALESCE(?, status),
+        updated_at = CURRENT_TIMESTAMP
+    WHERE rating_key = ?
+    """, (tvdb_id, poster_url, backdrop_url, status, rating_key))
     conn.commit()
     conn.close()
 

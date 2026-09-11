@@ -62,6 +62,7 @@ init_db()
 sync_mgr = SyncManager()
 ai_styler = AIStyler()
 tmdb = TMDbClient()
+tvdb = sync_mgr.tvdb
 mediux = MediuxClient()
 renderer = TitleCardRenderer()
 
@@ -92,7 +93,9 @@ def get_config_info():
         "poll_interval_hours": POLL_INTERVAL_HOURS,
         "listener_connected": plex_listener.is_connected,
         "auth_enabled": config.ENABLE_AUTH,
-        "has_gemini_key": bool(ai_styler.api_key)
+        "has_gemini_key": bool(ai_styler.api_key),
+        "has_tvdb_key": bool(tvdb.is_configured),
+        "has_tmdb_key": bool(tmdb.api_key)
     }
 
 # ----------------------------------------------------
@@ -323,6 +326,32 @@ def get_show_details(rating_key: str):
     if show.get("poster_url"):
         show["poster_url"] = f"/api/shows/{rating_key}/poster"
 
+    # Auto-backfill tvdb_id from Plex or TMDb if missing
+    if not show.get("tvdb_id") and tvdb.is_configured:
+        try:
+            plex_item = sync_mgr.plex.server.fetchItem(int(rating_key))
+            found_tvdb = sync_mgr.plex._extract_tvdb_id(plex_item)
+            if not found_tvdb and show.get("tmdb_id"):
+                found_tvdb = tvdb.resolve_tvdb_id_from_remote(str(show["tmdb_id"]))
+            if found_tvdb:
+                from backend.db import update_show_tvdb_id
+                update_show_tvdb_id(rating_key, found_tvdb)
+                show["tvdb_id"] = found_tvdb
+        except Exception:
+            pass
+
+    # Refresh show broadcast status from TVDB if TVDB is prioritized
+    priority = get_setting("metadata_provider_priority", "tvdb").lower()
+    if show.get("tvdb_id") and priority == "tvdb" and tvdb.is_configured:
+        try:
+            tvdb_status = tvdb.get_series_status(int(show["tvdb_id"]))
+            if tvdb_status and tvdb_status != show.get("status"):
+                from backend.db import update_show_status
+                update_show_status(rating_key, tvdb_status)
+                show["status"] = tvdb_status
+        except Exception:
+            pass
+
     episodes = sync_mgr.plex.get_show_episodes(rating_key)
     tmdb_id = show.get("tmdb_id")
 
@@ -509,6 +538,51 @@ def match_show_tmdb(rating_key: str, payload: dict = Body(...)):
         updated_show["poster_url"] = f"/api/shows/{rating_key}/poster"
     return {"status": "success", "show": updated_show, "tmdb_info": details}
 
+@app.get("/api/tvdb/search")
+def search_tvdb(query: str, year: Optional[int] = None):
+    """Search TheTVDB for TV shows matching the query."""
+    if not query:
+        raise HTTPException(status_code=400, detail="Query parameter is required")
+    if not tvdb.is_configured:
+        raise HTTPException(status_code=400, detail="TheTVDB API is not configured in .env")
+    results = tvdb.search_shows(query, year=year)
+    return {"results": results}
+
+@app.post("/api/shows/{rating_key}/tvdb-match")
+def match_show_tvdb(rating_key: str, payload: dict = Body(...)):
+    """Link a show to a TheTVDB ID and auto-resolve TMDb ID if available."""
+    from backend.db import update_show_tvdb_id, update_show_tmdb_id
+    tvdb_id = payload.get("tvdb_id")
+    if not tvdb_id:
+        raise HTTPException(status_code=400, detail="tvdb_id is required")
+
+    show = get_show(rating_key)
+    if not show:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    try:
+        tvdb_id = int(tvdb_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid tvdb_id format")
+
+    series_data = tvdb.get_series_extended(tvdb_id)
+    resolved_tmdb = tvdb.resolve_tmdb_id(tvdb_id)
+
+    update_show_tvdb_id(rating_key, tvdb_id)
+    if resolved_tmdb and not show.get("tmdb_id"):
+        update_show_tmdb_id(rating_key, resolved_tmdb)
+
+    updated_show = get_show(rating_key)
+    if updated_show and updated_show.get("poster_url"):
+        updated_show["poster_url"] = f"/api/shows/{rating_key}/poster"
+
+    return {
+        "status": "success",
+        "show": updated_show,
+        "tvdb_info": series_data,
+        "resolved_tmdb_id": resolved_tmdb
+    }
+
 @app.post("/api/shows/{rating_key}/plex-fix-match")
 def fix_match_in_plex(rating_key: str, payload: dict = Body(default={})):
     """Instruct Plex server to execute fixMatch on the show."""
@@ -678,13 +752,50 @@ def get_show_logo(rating_key: str):
 
 @app.get("/api/shows/{rating_key}/episodes/{season_number}/{episode_number}/stills")
 def get_episode_stills(rating_key: str, season_number: int, episode_number: int):
-    """Retrieve all candidate backdrop stills for an episode from TMDb."""
-    from backend.db import get_episode_still_override
+    """Retrieve all candidate backdrop stills for an episode from TVDB and TMDb."""
+    from backend.db import get_episode_still_override, get_setting
     show = get_show(rating_key)
-    if not show or not show.get("tmdb_id"):
-        raise HTTPException(status_code=404, detail="Show or TMDb link not found")
+    if not show:
+        raise HTTPException(status_code=404, detail="Show not found")
 
-    stills = tmdb.get_episode_stills_list(int(show["tmdb_id"]), season_number, episode_number)
+    priority = get_setting("metadata_provider_priority", "tvdb").lower()
+    tvdb_stills = []
+    tmdb_stills = []
+
+    # Auto-backfill tvdb_id if missing
+    if not show.get("tvdb_id") and tvdb.is_configured:
+        try:
+            plex_item = sync_mgr.plex.server.fetchItem(int(rating_key))
+            found_tvdb = sync_mgr.plex._extract_tvdb_id(plex_item)
+            if not found_tvdb and show.get("tmdb_id"):
+                found_tvdb = tvdb.resolve_tvdb_id_from_remote(str(show["tmdb_id"]))
+            if found_tvdb:
+                from backend.db import update_show_tvdb_id
+                update_show_tvdb_id(rating_key, found_tvdb)
+                show["tvdb_id"] = found_tvdb
+        except Exception:
+            pass
+
+    if show.get("tvdb_id") and tvdb.is_configured:
+        try:
+            tvdb_stills = tvdb.get_episode_stills_list(int(show["tvdb_id"]), season_number, episode_number)
+        except Exception as e:
+            logger.warning(f"Error fetching TVDB stills for {rating_key}: {e}")
+
+    if show.get("tmdb_id") and tmdb.api_key:
+        try:
+            tmdb_stills = tmdb.get_episode_stills_list(int(show["tmdb_id"]), season_number, episode_number)
+            for s in tmdb_stills:
+                s["provider"] = "tmdb"
+        except Exception as e:
+            logger.warning(f"Error fetching TMDb stills for {rating_key}: {e}")
+
+    # Combine according to priority
+    if priority == "tvdb":
+        stills = tvdb_stills + tmdb_stills
+    else:
+        stills = tmdb_stills + tvdb_stills
+
     override = get_episode_still_override(rating_key, season_number, episode_number)
 
     for s in stills:
@@ -707,14 +818,18 @@ def select_episode_still(rating_key: str, season_number: int, episode_number: in
         raise HTTPException(status_code=400, detail="still_path is required")
 
     show = get_show(rating_key)
-    if not show or not show.get("tmdb_id"):
+    if not show:
         raise HTTPException(status_code=404, detail="Show not found")
 
     # Persist override in SQLite
     set_episode_still_override(rating_key, season_number, episode_number, still_path)
 
     # Pre-download specific still file in background
-    cached_path = tmdb.get_episode_still(int(show["tmdb_id"]), season_number, episode_number, specific_still_path=still_path)
+    cached_path = None
+    if (still_path.startswith("http://") or still_path.startswith("https://")) and show.get("tvdb_id"):
+        cached_path = tvdb.get_episode_still(int(show["tvdb_id"]), season_number, episode_number, specific_still_url=still_path)
+    elif show.get("tmdb_id"):
+        cached_path = tmdb.get_episode_still(int(show["tmdb_id"]), season_number, episode_number, specific_still_path=still_path)
 
     return {
         "status": "success",
@@ -726,14 +841,14 @@ def select_episode_still(rating_key: str, season_number: int, episode_number: in
 
 @app.post("/api/shows/{rating_key}/auto-pick-stills")
 def auto_pick_stills(rating_key: str, payload: dict = Body(default={})):
-    """Auto-select the highest community quality-rated still for all episodes of a show or season."""
-    from backend.db import set_episode_still_override
+    """Auto-select the highest quality still for all episodes of a show or season respecting provider priority."""
+    from backend.db import set_episode_still_override, get_setting
     show = get_show(rating_key)
-    if not show or not show.get("tmdb_id"):
+    if not show:
         raise HTTPException(status_code=404, detail="Show not found")
 
     target_season = payload.get("season_number")
-    tmdb_id = int(show["tmdb_id"])
+    priority = get_setting("metadata_provider_priority", "tvdb").lower()
     episodes = sync_mgr.plex.get_show_episodes(rating_key)
     updated_count = 0
 
@@ -743,11 +858,21 @@ def auto_pick_stills(rating_key: str, payload: dict = Body(default={})):
         if target_season is not None and s_num != target_season:
             continue
 
-        stills = tmdb.get_episode_stills_list(tmdb_id, s_num, e_num)
-        if stills:
-            best = stills[0]["file_path"]
+        best = None
+        if priority == "tvdb" and show.get("tvdb_id") and tvdb.is_configured:
+            stills = tvdb.get_episode_stills_list(int(show["tvdb_id"]), s_num, e_num)
+            if stills:
+                best = stills[0]["file_path"]
+                tvdb.get_episode_still(int(show["tvdb_id"]), s_num, e_num, specific_still_url=best)
+
+        if not best and show.get("tmdb_id") and tmdb.api_key:
+            stills = tmdb.get_episode_stills_list(int(show["tmdb_id"]), s_num, e_num)
+            if stills:
+                best = stills[0]["file_path"]
+                tmdb.get_episode_still(int(show["tmdb_id"]), s_num, e_num, specific_still_path=best)
+
+        if best:
             set_episode_still_override(rating_key, s_num, e_num, best)
-            tmdb.get_episode_still(tmdb_id, s_num, e_num, specific_still_path=best)
             updated_count += 1
 
     return {

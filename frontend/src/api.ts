@@ -249,6 +249,41 @@ export const api = {
     return res.json();
   },
 
+  async searchTvdb(query: string, year?: number): Promise<{ results: Array<{
+    tvdb_id: number;
+    name: string;
+    year?: number | null;
+    overview?: string | null;
+    poster_url?: string | null;
+    status?: string | null;
+  }> }> {
+    const params = new URLSearchParams({ query });
+    if (year) params.append('year', year.toString());
+    const res = await fetch(`/api/tvdb/search?${params.toString()}`);
+    if (!res.ok) {
+      throw new Error(`TheTVDB search failed: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async setTvdbMatch(ratingKey: string, tvdbId: number): Promise<{
+    status: string;
+    show: Show;
+    tvdb_info?: any;
+    resolved_tmdb_id?: number | null;
+  }> {
+    const res = await fetch(`/api/shows/${ratingKey}/tvdb-match`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tvdb_id: tvdbId })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to link TVDB ID' }));
+      throw new Error(err.detail || 'Failed to link TVDB ID');
+    }
+    return res.json();
+  },
+
   async plexFixMatch(ratingKey: string, options?: { title?: string; year?: number }): Promise<{
     success: boolean;
     matched_title?: string;

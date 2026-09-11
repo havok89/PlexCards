@@ -102,6 +102,21 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 </button>
               )}
 
+              {show.tvdb_id && (
+                <div className="flex items-center gap-1 bg-dark-800 border border-emerald-900/60 px-1.5 py-0.5 rounded text-[10px] sm:text-[11px]">
+                  <a
+                    href={`https://thetvdb.com/dereferrer/series/${show.tvdb_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition font-medium"
+                    title="View show on TheTVDB"
+                  >
+                    <span>TVDB: {show.tvdb_id}</span>
+                    <ExternalLink className="w-2.5 h-2.5 text-emerald-500" />
+                  </a>
+                </div>
+              )}
+
               <span className="text-gray-600 hidden xs:inline">•</span>
               <button
                 type="button"

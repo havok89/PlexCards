@@ -45,6 +45,7 @@ class PlexClient:
         result = []
         for show in plex_shows:
             tmdb_id = self._extract_tmdb_id(show)
+            tvdb_id = self._extract_tvdb_id(show)
             poster_url = show.posterUrl if hasattr(show, 'posterUrl') else None
             art_url = show.artUrl if hasattr(show, 'artUrl') else None
             
@@ -57,6 +58,7 @@ class PlexClient:
                 "title": show.title,
                 "year": show.year,
                 "tmdb_id": tmdb_id,
+                "tvdb_id": tvdb_id,
                 "poster_url": poster_url,
                 "backdrop_url": art_url,
                 "total_seasons": len(seasons),
@@ -144,6 +146,27 @@ class PlexClient:
         # Fallback check item.guid
         if hasattr(item, 'guid'):
             match = re.search(r'tmdb://(\d+)', item.guid)
+            if match:
+                return int(match.group(1))
+        return None
+
+    def _extract_tvdb_id(self, item) -> Optional[int]:
+        """Extract TheTVDB ID from Plex GUIDs (e.g., 'tvdb://80348' or 'thetvdb://80348')."""
+        if hasattr(item, 'guids'):
+            for g in item.guids:
+                if g.id.startswith('tvdb://'):
+                    try:
+                        return int(g.id.replace('tvdb://', ''))
+                    except ValueError:
+                        pass
+                elif 'thetvdb://' in g.id:
+                    match = re.search(r'thetvdb://(\d+)', g.id)
+                    if match:
+                        return int(match.group(1))
+                        
+        # Fallback check item.guid
+        if hasattr(item, 'guid'):
+            match = re.search(r'(?:tvdb|thetvdb)://(\d+)', item.guid)
             if match:
                 return int(match.group(1))
         return None
