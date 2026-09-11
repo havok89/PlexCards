@@ -44,18 +44,25 @@ Whether you want consistent artwork for airing series before designers upload to
 - **Lightweight Poster Thumbnails:** High-resolution posters are automatically compressed and resized using PIL from ~2.5MB down to ~45KB–60KB (**96%+ bandwidth savings**), keeping grid views lightning fast even on cellular data.
 - **Edge Caching & ETag Support:** Served with `Cache-Control` and `ETag` (HTTP 304 Not Modified), utilizing zero tunnel bandwidth on repeat visits.
 
-### 6. 🔍 TMDb Search & Plex Fix-Match Studio
-- **Smart Title Normalization:** Cleans roman numerals, release years, and country codes to maximize match accuracy.
-- **Built-In TMDb Search:** Search and link alternative TMDb IDs directly inside the app if Plex mismatched a series.
-- **Push Fix-Match to Plex:** Push corrected TMDb GUIDs back to your Plex Media Server directly from the studio.
-- **Continuing vs. Ended Filter:** Filter your library by active airing shows (`Returning Series`) versus concluded shows (`Ended`).
+### 6. 🔍 Dual Provider Engine (TheTVDB & TMDb)
+- **TheTVDB (v4) Prioritization:** First-class support for libraries managed with Sonarr and Plex's TheTVDB ordering.
+- **Subscriber PIN Support:** Full compatibility with TheTVDB v4 subscriber accounts and personal API keys.
+- **Provider Cascade:** Prioritize TheTVDB for community episode screencaps, accurate season numbering, and broadcast statuses (`Continuing` vs `Ended`), with automatic fallback to TMDb.
+- **MediUX Bridge:** Automatically resolves and translates TVDB IDs to TMDb IDs so community MediUX sets match effortlessly even when Plex only indexes TVDB GUIDs.
+- **Smart Candidate Stills:** Browse and select candidate stills from both TheTVDB and TMDb with clear provider badges.
 
-### 7. 🔒 Plex OAuth Authentication
+### 7. 🔍 TMDb Search & Plex Fix-Match Studio
+- **Smart Title Normalization:** Cleans roman numerals, release years, and country codes to maximize match accuracy.
+- **Built-In Search:** Search and link alternative IDs directly inside the app if Plex mismatched a series.
+- **Push Fix-Match to Plex:** Push corrected GUIDs back to your Plex Media Server directly from the studio.
+- **Continuing vs. Ended Filter:** Filter your library by active airing shows (`Continuing` / `Returning Series`) versus concluded shows (`Ended`).
+
+### 8. 🔒 Plex OAuth Authentication
 - **Secure by Default:** Protect your dashboard with official Plex OAuth sign-in (`ENABLE_AUTH=true`).
 - **Owner & Multi-User Whitelist:** Restricts access to the Plex Media Server owner by default, with an optional username/email whitelist (`ALLOWED_USERS`).
 - **Signed Session Cookies:** Secure HMAC-SHA256 browser session handling.
 
-### 8. 🛡️ Safe Testing Mode
+### 9. 🛡️ Safe Testing Mode
 - **Dry-Run Protection:** `TEST_MODE=true` is enabled by default. You can experiment with fonts, test layouts, and generate previews without writing any changes to your real Plex library until you're ready.
 
 ---
@@ -104,6 +111,9 @@ Here is the complete list of variables supported in `.env`:
 | `PLEX_TOKEN` | **Yes** | — | Your Plex authentication token (X-Plex-Token). |
 | `PLEX_TV_LIBRARY` | **Yes** | `TV Shows` | The exact name of your TV library section in Plex. |
 | `TMDB_API_KEY` | **Yes** | — | Free TMDb v3 API key or v4 read token for fetching episode stills and metadata. |
+| `TVDB_API_KEY` | *No* | — | TheTVDB v4 Project API Key for episode stills and series metadata. |
+| `TVDB_PIN` | *No* | — | TheTVDB Subscriber PIN (required if your TVDB account has a subscriber subscription). |
+| `DEFAULT_METADATA_PROVIDER` | *No* | `tvdb` | Primary metadata provider for stills and series status (`tvdb` or `tmdb`). |
 | `GEMINI_API_KEY` | *No* | — | Google Gemini API key for AI style suggestions. *(If omitted, AI UI features are hidden).* |
 | `GEMINI_MODEL` | *No* | `gemini-3.5-flash-lite` | Gemini model to use. `gemini-3.5-flash-lite` offers a generous free tier (up to 500 requests/day). |
 | `MEDIUX_API_TOKEN` | *No* | — | Optional MediUX API token if you have beta/private account access. |
@@ -133,7 +143,14 @@ Here is the complete list of variables supported in `.env`:
 3. Request an API key (choose "Developer").
 4. Copy the **API Key (v3 auth)** into `TMDB_API_KEY`.
 
-### 3. Google Gemini Key (`GEMINI_API_KEY`) *(Optional)*
+### 3. TheTVDB v4 Key & Subscriber PIN (`TVDB_API_KEY` & `TVDB_PIN`) *(Optional)*
+1. Log in to [TheTVDB.com](https://thetvdb.com/).
+2. Go to your **Account Dashboard** > [API Keys](https://thetvdb.com/dashboard/account/apikeys) and generate a **v4 Project API Key**.
+3. If you have an active TVDB subscription, locate your **Subscriber PIN** under your subscription / account settings.
+4. Copy the key to `TVDB_API_KEY` and the PIN to `TVDB_PIN`.
+> *(When configured, PlexCards can prioritize TVDB for screencaps and status data while maintaining MediUX matching).*
+
+### 4. Google Gemini Key (`GEMINI_API_KEY`) *(Optional)*
 1. Go to [Google AI Studio](https://aistudio.google.com/).
 2. Click **Get API key** and create a free key in a Google Cloud project.
 3. Paste the key into `GEMINI_API_KEY`.
