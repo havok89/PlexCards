@@ -79,6 +79,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   const [isFixingPlexMatch, setIsFixingPlexMatch] = useState<boolean>(false);
 
   const { showToast } = useToast();
+  const [stillNonce, setStillNonce] = useState<number>(0);
 
   const [styleConfig, setStyleConfig] = useState<StyleConfig>({
     layout: show.layout || 'standard',
@@ -197,7 +198,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     const ep = episodes[selectedEpIndex];
     if (!ep) return;
 
-    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.subheading_font_family || ''}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.show_subheading}_${styleConfig.subheading_format}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}_${styleConfig.title_font_size}_${styleConfig.subheading_font_size}_${styleConfig.text_box_width_pct || 46}_${styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 16}_${styleConfig.subheading_casing || 'upper'}_${styleConfig.subheading_position || 'above'}_${styleConfig.subheading_tracking || 0}_${styleConfig.frosted_blur_pct || 0}_${styleConfig.film_grain_pct || 0}_${styleConfig.vignette_pct || 0}_${styleConfig.text_shadow_mode || 'none'}_${styleConfig.show_logo || 0}_${styleConfig.logo_position || 'top_right'}_${styleConfig.logo_opacity_pct || 90}_${styleConfig.logo_monochrome || 0}`;
+    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.subheading_font_family || ''}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.show_subheading}_${styleConfig.subheading_format}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}_${styleConfig.title_font_size}_${styleConfig.subheading_font_size}_${styleConfig.text_box_width_pct || 46}_${styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 16}_${styleConfig.subheading_casing || 'upper'}_${styleConfig.subheading_position || 'above'}_${styleConfig.subheading_tracking || 0}_${styleConfig.frosted_blur_pct || 0}_${styleConfig.film_grain_pct || 0}_${styleConfig.vignette_pct || 0}_${styleConfig.text_shadow_mode || 'none'}_${styleConfig.show_logo || 0}_${styleConfig.logo_position || 'top_right'}_${styleConfig.logo_opacity_pct || 90}_${styleConfig.logo_monochrome || 0}_${stillNonce}`;
     if (previewBlobCache.has(cacheKey)) {
       setPreviewUrl(previewBlobCache.get(cacheKey)!);
       setIsPreviewLoading(false);
@@ -230,7 +231,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     return () => {
       active = false;
     };
-  }, [selectedEpIndex, episodes, styleConfig, activeShow.rating_key]);
+  }, [selectedEpIndex, episodes, styleConfig, activeShow.rating_key, stillNonce]);
 
   const handleModeChange = async (newMode: 'auto' | 'generator_only' | 'ignored') => {
     setActiveShow((prev) => ({ ...prev, mode: newMode }));
@@ -712,6 +713,10 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
             previewUrl={previewUrl}
             currentEp={currentEp}
             hasGeminiKey={hasGeminiKey}
+            onStillChanged={() => {
+              setPreviewTab('generator');
+              setStillNonce((n) => n + 1);
+            }}
           />
 
           {/* Right Column: Source Modes, MediUX Sets & Generator Styling */}
@@ -747,6 +752,8 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
               handleSaveStyle={handleSaveStyle}
               isSavedJustNow={isSavedJustNow}
               hasGeminiKey={hasGeminiKey}
+              activeShowRatingKey={activeShow.rating_key}
+              currentEp={currentEp}
             />
           </div>
         </div>

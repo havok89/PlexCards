@@ -1,6 +1,7 @@
-import React, { useRef, useState } from 'react';
-import { Sparkles, Loader2, Upload, CheckCircle, Film, Image as ImageIcon, ChevronDown, ChevronUp } from 'lucide-react';
-import { StyleConfig } from '../../types';
+import React, { useRef, useState, useEffect } from 'react';
+import { Sparkles, Loader2, Upload, CheckCircle, Film, Image as ImageIcon, ChevronDown, ChevronUp, Palette, Pipette } from 'lucide-react';
+import { StyleConfig, PaletteResponse, Episode } from '../../types';
+import { api } from '../../api';
 
 export const getSubheadingPreview = (
   fmt?: string,
@@ -96,6 +97,8 @@ interface GeneratorControlsProps {
   handleSaveStyle: () => void;
   isSavedJustNow: boolean;
   hasGeminiKey?: boolean;
+  activeShowRatingKey?: string;
+  currentEp?: Episode;
 }
 
 const PREDEFINED_FORMATS = [
@@ -129,11 +132,43 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
   handleFontUpload,
   handleSaveStyle,
   isSavedJustNow,
-  hasGeminiKey = true
+  hasGeminiKey = true,
+  activeShowRatingKey,
+  currentEp
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isCustomFormat = !PREDEFINED_FORMATS.includes(styleConfig.subheading_format);
   const [isFxOpen, setIsFxOpen] = useState(true);
+
+  // Palette state
+  const [palette, setPalette] = useState<PaletteResponse | null>(null);
+  const [isPaletteLoading, setIsPaletteLoading] = useState(false);
+
+  const handleSamplePalette = async () => {
+    if (!activeShowRatingKey) return;
+    setIsPaletteLoading(true);
+    try {
+      const data = await api.getStillPalette(
+        activeShowRatingKey,
+        currentEp?.season_number,
+        currentEp?.episode_number
+      );
+      setPalette(data);
+    } catch (err) {
+      console.warn('Could not extract palette:', err);
+    } finally {
+      setIsPaletteLoading(false);
+    }
+  };
+
+  const handleAutoMatchPalette = () => {
+    if (!palette) return;
+    setStyleConfig((prev) => ({
+      ...prev,
+      font_color: palette.recommended.font_color,
+      subheading_color: palette.recommended.subheading_color
+    }));
+  };
 
   return (
     <div className="border-t border-gray-800 pt-4 flex flex-col gap-4">
@@ -392,6 +427,77 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
           />
         </div>
       </div>
+
+      {/* Vibrant Palette Extraction from Still */}
+      {activeShowRatingKey && (
+        <div className="bg-dark-850/60 border border-gray-800 rounded-xl p-3 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Palette className="w-3.5 h-3.5 text-brand-400" />
+              <span className="text-xs font-semibold text-white">Palette from Still</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleSamplePalette}
+                disabled={isPaletteLoading}
+                className="text-[10px] px-2 py-0.5 rounded bg-dark-800 hover:bg-dark-700 text-gray-300 hover:text-white border border-gray-700 flex items-center gap-1 transition"
+                title="Sample color swatches from the current episode still"
+              >
+                {isPaletteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Pipette className="w-3 h-3" />}
+                <span>{palette ? 'Re-sample' : 'Sample'}</span>
+              </button>
+              {palette && (
+                <button
+                  type="button"
+                  onClick={handleAutoMatchPalette}
+                  className="text-[10px] px-2 py-0.5 rounded bg-brand-500/20 hover:bg-brand-500/30 text-brand-300 border border-brand-500/40 font-medium transition"
+                  title="Auto-match Title + Subtitle colors to the still"
+                >
+                  Auto Match
+                </button>
+              )}
+            </div>
+          </div>
+
+          {palette ? (
+            <div className="flex flex-col gap-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-gray-400">Click swatch to set Title Color:</span>
+                <span className="text-[10px] text-gray-400 font-mono">{styleConfig.font_color}</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {palette.swatches.map((color, idx) => (
+                  <button
+                    key={`${color}_${idx}`}
+                    type="button"
+                    onClick={() => setStyleConfig((prev) => ({ ...prev, font_color: color }))}
+                    style={{ backgroundColor: color }}
+                    className={`w-7 h-7 rounded-full border transition-transform hover:scale-125 shadow-sm relative group ${
+                      styleConfig.font_color.toUpperCase() === color.toUpperCase()
+                        ? 'border-white ring-2 ring-white/50 scale-110'
+                        : 'border-black/50'
+                    }`}
+                    title={`Click to set Title Color to ${color}`}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between text-[11px] text-gray-400 pt-0.5">
+              <span>Extract dominant & accent colors from this episode frame.</span>
+              <button
+                type="button"
+                onClick={handleSamplePalette}
+                disabled={isPaletteLoading}
+                className="text-brand-400 hover:text-brand-300 font-medium ml-2 shrink-0"
+              >
+                Extract
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Title Font Color */}
       <div>

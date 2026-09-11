@@ -139,6 +139,19 @@ def init_db():
     )
     """)
 
+    # Episode still overrides (when user picks a specific candidate still from TMDb)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS episode_still_overrides (
+        rating_key TEXT NOT NULL,
+        season_number INTEGER NOT NULL,
+        episode_number INTEGER NOT NULL,
+        still_path TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (rating_key, season_number, episode_number),
+        FOREIGN KEY(rating_key) REFERENCES shows(rating_key) ON DELETE CASCADE
+    )
+    """)
+
     # App settings key-value store
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS settings (
@@ -467,5 +480,56 @@ def record_season_poster(season_rating_key: str, show_rating_key: str, season_nu
     """, (str(season_rating_key), str(show_rating_key), season_number, poster_url))
     conn.commit()
     conn.close()
+
+def get_episode_still_override(rating_key: str, season_number: int, episode_number: int) -> Optional[str]:
+    """Retrieve custom TMDb still path override for a specific episode, if any."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT still_path FROM episode_still_overrides 
+        WHERE rating_key = ? AND season_number = ? AND episode_number = ?
+    """, (str(rating_key), int(season_number), int(episode_number)))
+    row = cursor.fetchone()
+    conn.close()
+    return row["still_path"] if row else None
+
+def set_episode_still_override(rating_key: str, season_number: int, episode_number: int, still_path: str):
+    """Save or update custom TMDb still path override for an episode."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO episode_still_overrides (rating_key, season_number, episode_number, still_path, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(rating_key, season_number, episode_number) DO UPDATE SET
+            still_path = excluded.still_path,
+            updated_at = CURRENT_TIMESTAMP
+    """, (str(rating_key), int(season_number), int(episode_number), str(still_path)))
+    conn.commit()
+    conn.close()
+
+def delete_episode_still_override(rating_key: str, season_number: int, episode_number: int):
+    """Remove custom still override and revert back to TMDb default."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        DELETE FROM episode_still_overrides 
+        WHERE rating_key = ? AND season_number = ? AND episode_number = ?
+    """, (str(rating_key), int(season_number), int(episode_number)))
+    conn.commit()
+    conn.close()
+
+def get_all_still_overrides_for_show(rating_key: str) -> Dict[str, str]:
+    """Retrieve all still overrides for a show formatted as {'s_e': still_path}."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT season_number, episode_number, still_path 
+        FROM episode_still_overrides 
+        WHERE rating_key = ?
+    """, (str(rating_key),))
+    rows = cursor.fetchall()
+    conn.close()
+    return {f"{r['season_number']}_{r['episode_number']}": r["still_path"] for r in rows}
+
 
 

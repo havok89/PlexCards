@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Show, Episode, MediuxSet } from '../../types';
+import { Show, Episode, MediuxSet, CandidateStill } from '../../types';
 import { api } from '../../api';
+import { useToast } from '../../context/ToastContext';
 import {
   Eye, Zap, Wand2, Loader2, Sparkles, FlaskConical,
-  Tv, Split, SlidersHorizontal, ChevronLeft, ChevronRight
+  Tv, Split, SlidersHorizontal, ChevronLeft, ChevronRight,
+  Film, Check
 } from 'lucide-react';
 
 interface StudioPreviewCanvasProps {
@@ -22,6 +24,7 @@ interface StudioPreviewCanvasProps {
   previewUrl: string | null;
   currentEp?: Episode;
   hasGeminiKey?: boolean;
+  onStillChanged?: () => void;
 }
 
 export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
@@ -39,10 +42,19 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
   isPreviewLoading,
   previewUrl,
   currentEp,
-  hasGeminiKey = true
+  hasGeminiKey = true,
+  onStillChanged
 }) => {
-  // Modes: 'single' card or 'shelf' (5 in a row simulator)
+  const { showToast } = useToast();
+
+  // Modes: 'single' card or 'shelf' (2 in a row simulator)
   const [viewMode, setViewMode] = useState<'single' | 'shelf'>('single');
+
+  // Candidate TMDb stills
+  const [candidateStills, setCandidateStills] = useState<CandidateStill[]>([]);
+  const [selectedStillPath, setSelectedStillPath] = useState<string | null>(null);
+  const [isStillsLoading, setIsStillsLoading] = useState<boolean>(false);
+  const [isAutoPicking, setIsAutoPicking] = useState<boolean>(false);
 
   // Before/After comparison slider
   const [isCompareMode, setIsCompareMode] = useState<boolean>(false);
@@ -51,6 +63,92 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
   const [rawStillUrl, setRawStillUrl] = useState<string | null>(null);
   const [isRawStillLoading, setIsRawStillLoading] = useState<boolean>(false);
   const splitContainerRef = useRef<HTMLDivElement>(null);
+
+  // Fetch candidate stills from TMDb when episode or show changes
+  useEffect(() => {
+    if (!currentEp || !show.tmdb_id) {
+      setCandidateStills([]);
+      setSelectedStillPath(null);
+      return;
+    }
+
+    let active = true;
+    setIsStillsLoading(true);
+
+    api
+      .getCandidateStills(show.rating_key, currentEp.season_number, currentEp.episode_number)
+      .then((data) => {
+        if (!active) return;
+        setCandidateStills(data.stills || []);
+        setSelectedStillPath(data.selected_still_path);
+        setIsStillsLoading(false);
+      })
+      .catch((err) => {
+        console.warn('Candidate stills fetch error:', err);
+        if (active) setIsStillsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [show.rating_key, show.tmdb_id, currentEp?.season_number, currentEp?.episode_number]);
+
+  const handleSelectStill = async (still: CandidateStill) => {
+    if (!currentEp) return;
+    setSelectedStillPath(still.file_path);
+    try {
+      await api.selectEpisodeStill(
+        show.rating_key,
+        currentEp.season_number,
+        currentEp.episode_number,
+        still.file_path
+      );
+      showToast({
+        type: 'success',
+        title: 'Frame Selection Saved',
+        message: `Selected frame for S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')} saved.`
+      });
+      // Invalidate raw still cache for split comparison
+      setRawStillUrl(null);
+      onStillChanged?.();
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Failed to Save Frame',
+        message: String(err?.message || err)
+      });
+    }
+  };
+
+  const handleAutoPick = async () => {
+    if (!currentEp) return;
+    setIsAutoPicking(true);
+    try {
+      const res = await api.autoPickStills(show.rating_key, currentEp.season_number);
+      showToast({
+        type: 'success',
+        title: 'Smart Auto-Pick Complete',
+        message: res.message || `Selected highest rated stills for Season ${currentEp.season_number}.`
+      });
+      const data = await api.getCandidateStills(
+        show.rating_key,
+        currentEp.season_number,
+        currentEp.episode_number
+      );
+      setCandidateStills(data.stills || []);
+      setSelectedStillPath(data.selected_still_path);
+      setRawStillUrl(null);
+      onStillChanged?.();
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Auto-Pick Failed',
+        message: String(err?.message || err)
+      });
+    } finally {
+      setIsAutoPicking(false);
+    }
+  };
 
   // Fetch raw still when compare mode is activated or episode changes
   useEffect(() => {
@@ -75,7 +173,7 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
     return () => {
       active = false;
     };
-  }, [isCompareMode, currentEp?.season_number, currentEp?.episode_number, show.rating_key]);
+  }, [isCompareMode, currentEp?.season_number, currentEp?.episode_number, show.rating_key, selectedStillPath]);
 
   // Handle drag for split comparison slider
   const handlePointerMove = useCallback(
@@ -499,6 +597,100 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Candidate Stills Strip (Magic Frame Carousel) */}
+      {currentEp && Boolean(show.tmdb_id) && (
+        <div className="bg-dark-900 border border-gray-800 rounded-xl p-3 flex flex-col gap-2.5 shrink-0">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Film className="w-3.5 h-3.5 text-brand-400" />
+              <span className="text-xs font-semibold text-gray-200">
+                Candidate Stills ({candidateStills.length})
+              </span>
+              <span className="text-[10px] text-gray-500">
+                Click any frame to auto-save
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleAutoPick}
+              disabled={isAutoPicking || candidateStills.length === 0}
+              className="px-2.5 py-1 rounded-lg bg-dark-800 hover:bg-dark-700 border border-purple-500/40 text-purple-300 hover:text-purple-200 text-[11px] font-medium flex items-center gap-1.5 transition disabled:opacity-40"
+              title={`Smart auto-pick the highest community-rated frame for Season ${currentEp.season_number}`}
+            >
+              {isAutoPicking ? (
+                <Loader2 className="w-3 h-3 animate-spin text-purple-400" />
+              ) : (
+                <Sparkles className="w-3 h-3 text-purple-400" />
+              )}
+              <span>Smart Auto-Pick (Season {currentEp.season_number})</span>
+            </button>
+          </div>
+
+          {/* Stills Horizontal Carousel */}
+          {isStillsLoading ? (
+            <div className="flex items-center justify-center py-4 text-xs text-gray-400 gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-brand-500" />
+              <span>Loading candidate stills from TMDb...</span>
+            </div>
+          ) : candidateStills.length === 0 ? (
+            <div className="text-[11px] text-gray-500 italic py-1">
+              No alternate stills available from TMDb for this episode.
+            </div>
+          ) : (
+            <div className="flex items-center gap-2.5 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin scrollbar-thumb-gray-800">
+              {candidateStills.map((still) => {
+                const isSelected = selectedStillPath
+                  ? still.file_path === selectedStillPath
+                  : still.is_selected;
+
+                return (
+                  <button
+                    key={still.file_path}
+                    type="button"
+                    onClick={() => handleSelectStill(still)}
+                    className={`group relative shrink-0 w-28 sm:w-32 aspect-video rounded-lg overflow-hidden border transition-all text-left ${
+                      isSelected
+                        ? 'border-brand-500 ring-2 ring-brand-500/50 shadow-md scale-[1.02]'
+                        : 'border-gray-800 hover:border-gray-600 opacity-75 hover:opacity-100'
+                    }`}
+                    title={`Click to select this frame (${still.width}x${still.height}, rating: ${still.vote_average})`}
+                  >
+                    <img
+                      src={still.thumb_url}
+                      alt="Episode frame option"
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+
+                    {/* Active Selected Pill */}
+                    {isSelected && (
+                      <div className="absolute top-1 left-1 bg-emerald-600/95 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow flex items-center gap-0.5 backdrop-blur-sm">
+                        <Check className="w-2.5 h-2.5" />
+                        <span>ACTIVE</span>
+                      </div>
+                    )}
+
+                    {/* Top Pick Badge */}
+                    {!isSelected && still.is_top_pick && (
+                      <div className="absolute top-1 left-1 bg-purple-600/90 text-white text-[8px] font-semibold px-1 py-0.5 rounded shadow backdrop-blur-sm">
+                        ★ BEST
+                      </div>
+                    )}
+
+                    {/* Stats overlay */}
+                    <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1 flex items-center justify-between text-[8px] font-mono text-gray-300">
+                      <span>★ {still.vote_average}</span>
+                      <span>{still.width}p</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

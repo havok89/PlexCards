@@ -131,3 +131,34 @@ export interface PollResponse {
   detail?: string;
 }
 
+export interface CandidateStill {
+  file_path: string;
+  thumb_url: string;
+  full_url: string;
+  width: number;
+  height: number;
+  aspect_ratio: number;
+  is_16_9: boolean;
+  vote_average: number;
+  vote_count: number;
+  quality_score: number;
+  is_top_pick?: boolean;
+  is_selected?: boolean;
+}
+
+export interface StillsResponse {
+  stills: CandidateStill[];
+  selected_still_path: string | null;
+}
+
+export interface PaletteResponse {
+  dominant: string;
+  vibrant: string;
+  swatches: string[];
+  recommended: {
+    font_color: string;
+    subheading_color: string;
+  };
+}
+
+

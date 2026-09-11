@@ -521,12 +521,16 @@ def generate_preview(rating_key: str, payload: dict = Body(...)):
         s_ff = (payload.get("subheading_font_family") or "").strip()
         style["subheading_font_family"] = s_ff if s_ff else None
 
+    from backend.db import get_episode_still_override
+    still_override = get_episode_still_override(rating_key, season_num, episode_num)
+
     # Request 5: Compute hash and check preview cache for instantaneous load
     cache_key = hashlib.md5(json.dumps({
         "rk": rating_key,
         "s": season_num,
         "e": episode_num,
         "t": episode_title,
+        "still": still_override or "",
         "pos": style.get("text_position"),
         "font": style.get("font_family"),
         "s_font": style.get("subheading_font_family"),
@@ -623,6 +627,110 @@ def get_show_logo(rating_key: str):
     if not logo_path or not logo_path.exists():
         raise HTTPException(status_code=404, detail="Logo not available for this show")
     return FileResponse(logo_path, media_type="image/png")
+
+@app.get("/api/shows/{rating_key}/episodes/{season_number}/{episode_number}/stills")
+def get_episode_stills(rating_key: str, season_number: int, episode_number: int):
+    """Retrieve all candidate backdrop stills for an episode from TMDb."""
+    from backend.db import get_episode_still_override
+    show = get_show(rating_key)
+    if not show or not show.get("tmdb_id"):
+        raise HTTPException(status_code=404, detail="Show or TMDb link not found")
+
+    stills = tmdb.get_episode_stills_list(int(show["tmdb_id"]), season_number, episode_number)
+    override = get_episode_still_override(rating_key, season_number, episode_number)
+
+    for s in stills:
+        if override:
+            s["is_selected"] = (s["file_path"] == override)
+        else:
+            s["is_selected"] = s.get("is_top_pick", False)
+
+    return {
+        "stills": stills,
+        "selected_still_path": override or (stills[0]["file_path"] if stills else None)
+    }
+
+@app.post("/api/shows/{rating_key}/episodes/{season_number}/{episode_number}/select-still")
+def select_episode_still(rating_key: str, season_number: int, episode_number: int, payload: dict = Body(...)):
+    """Save user-selected still frame override for an episode and pre-cache it."""
+    from backend.db import set_episode_still_override
+    still_path = payload.get("still_path")
+    if not still_path:
+        raise HTTPException(status_code=400, detail="still_path is required")
+
+    show = get_show(rating_key)
+    if not show or not show.get("tmdb_id"):
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    # Persist override in SQLite
+    set_episode_still_override(rating_key, season_number, episode_number, still_path)
+
+    # Pre-download specific still file in background
+    cached_path = tmdb.get_episode_still(int(show["tmdb_id"]), season_number, episode_number, specific_still_path=still_path)
+
+    return {
+        "status": "success",
+        "still_path": still_path,
+        "season_number": season_number,
+        "episode_number": episode_number,
+        "cached": bool(cached_path and cached_path.exists())
+    }
+
+@app.post("/api/shows/{rating_key}/auto-pick-stills")
+def auto_pick_stills(rating_key: str, payload: dict = Body(default={})):
+    """Auto-select the highest community quality-rated still for all episodes of a show or season."""
+    from backend.db import set_episode_still_override
+    show = get_show(rating_key)
+    if not show or not show.get("tmdb_id"):
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    target_season = payload.get("season_number")
+    tmdb_id = int(show["tmdb_id"])
+    episodes = sync_mgr.plex.get_show_episodes(rating_key)
+    updated_count = 0
+
+    for ep in episodes:
+        s_num = ep["season_number"]
+        e_num = ep["episode_number"]
+        if target_season is not None and s_num != target_season:
+            continue
+
+        stills = tmdb.get_episode_stills_list(tmdb_id, s_num, e_num)
+        if stills:
+            best = stills[0]["file_path"]
+            set_episode_still_override(rating_key, s_num, e_num, best)
+            tmdb.get_episode_still(tmdb_id, s_num, e_num, specific_still_path=best)
+            updated_count += 1
+
+    return {
+        "status": "success",
+        "updated_episodes": updated_count,
+        "message": f"Smart auto-picked best quality stills for {updated_count} episodes."
+    }
+
+@app.get("/api/shows/{rating_key}/palette")
+def get_still_palette(
+    rating_key: str,
+    season_number: Optional[int] = None,
+    episode_number: Optional[int] = None
+):
+    """Extract dominant and vibrant color palette from current episode still or show backdrop."""
+    from backend.generator.palette import extract_palette
+    show = get_show(rating_key)
+    if not show:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    ep_dict = {
+        "season_number": season_number if season_number is not None else 1,
+        "episode_number": episode_number if episode_number is not None else 1,
+        "title": ""
+    }
+    still_path = sync_mgr.get_episode_backdrop_still(show, ep_dict)
+    if not still_path or not still_path.exists():
+        raise HTTPException(status_code=404, detail="Still image not available for palette extraction")
+
+    palette = extract_palette(still_path)
+    return palette
 
 @app.post("/api/shows/{rating_key}/apply")
 def apply_cards_to_show(rating_key: str, payload: dict = Body(default={})):

@@ -33,10 +33,12 @@ class SyncManager:
         s_num = ep.get("season_number")
         e_num = ep.get("episode_number")
 
-        # 1. Official TMDb episode still
+        # 1. Official TMDb episode still (or user custom selected candidate still)
         if tmdb_id and s_num is not None and e_num is not None:
             try:
-                still_file = self.tmdb.get_episode_still(tmdb_id, s_num, e_num)
+                from backend.db import get_episode_still_override
+                override_path = get_episode_still_override(show.get("rating_key", ""), s_num, e_num)
+                still_file = self.tmdb.get_episode_still(tmdb_id, s_num, e_num, specific_still_path=override_path)
                 if still_file and still_file.exists():
                     return still_file
             except Exception as e:

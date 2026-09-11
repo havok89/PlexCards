@@ -1,4 +1,4 @@
-import { Show, Episode, StyleConfig, MediuxSet, AppConfig, AuthStatus, PinResponse, PollResponse } from './types';
+import { Show, Episode, StyleConfig, MediuxSet, AppConfig, AuthStatus, PinResponse, PollResponse, StillsResponse, PaletteResponse } from './types';
 
 export const api = {
   async getConfig(): Promise<AppConfig> {
@@ -144,7 +144,7 @@ export const api = {
   },
 
   async getRawStillBlob(ratingKey: string, seasonNumber: number = 1, episodeNumber: number = 1): Promise<Blob> {
-    const res = await fetch(`/api/shows/${ratingKey}/raw-still?season_number=${seasonNumber}&episode_number=${episodeNumber}`);
+    const res = await fetch(`/api/shows/${ratingKey}/raw-still?season_number=${seasonNumber}&episode_number=${episodeNumber}&_t=${Date.now()}`);
     if (!res.ok) {
       throw new Error(`Failed to fetch raw still: status ${res.status}`);
     }
@@ -269,6 +269,49 @@ export const api = {
 
   async logout(): Promise<{ status: string }> {
     const res = await fetch('/api/auth/logout', { method: 'POST' });
+    return res.json();
+  },
+
+  async getCandidateStills(ratingKey: string, seasonNumber: number, episodeNumber: number): Promise<StillsResponse> {
+    const res = await fetch(`/api/shows/${ratingKey}/episodes/${seasonNumber}/${episodeNumber}/stills`);
+    if (!res.ok) {
+      throw new Error(`Failed to load candidate stills: status ${res.status}`);
+    }
+    return res.json();
+  },
+
+  async selectEpisodeStill(ratingKey: string, seasonNumber: number, episodeNumber: number, stillPath: string): Promise<any> {
+    const res = await fetch(`/api/shows/${ratingKey}/episodes/${seasonNumber}/${episodeNumber}/select-still`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ still_path: stillPath })
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to select still: status ${res.status}`);
+    }
+    return res.json();
+  },
+
+  async autoPickStills(ratingKey: string, seasonNumber?: number): Promise<{ status: string; updated_episodes: number; message: string }> {
+    const res = await fetch(`/api/shows/${ratingKey}/auto-pick-stills`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(seasonNumber !== undefined ? { season_number: seasonNumber } : {})
+    });
+    if (!res.ok) {
+      throw new Error(`Auto-pick failed: status ${res.status}`);
+    }
+    return res.json();
+  },
+
+  async getStillPalette(ratingKey: string, seasonNumber?: number, episodeNumber?: number): Promise<PaletteResponse> {
+    const params = new URLSearchParams();
+    if (seasonNumber !== undefined) params.append('season_number', seasonNumber.toString());
+    if (episodeNumber !== undefined) params.append('episode_number', episodeNumber.toString());
+    const res = await fetch(`/api/shows/${ratingKey}/palette?${params.toString()}`);
+    if (!res.ok) {
+      throw new Error(`Failed to extract palette: status ${res.status}`);
+    }
     return res.json();
   }
 };
