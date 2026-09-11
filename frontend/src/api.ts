@@ -143,11 +143,23 @@ export const api = {
     return finalResult || { status: 'success', updated_cards: 0, message: 'Completed' };
   },
 
-  async askAi(ratingKey: string, prompt: string): Promise<any> {
+  async getRawStillBlob(ratingKey: string, seasonNumber: number = 1, episodeNumber: number = 1): Promise<Blob> {
+    const res = await fetch(`/api/shows/${ratingKey}/raw-still?season_number=${seasonNumber}&episode_number=${episodeNumber}`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch raw still: status ${res.status}`);
+    }
+    return res.blob();
+  },
+
+  async askAi(ratingKey: string, prompt: string, seasonNumber?: number, episodeNumber?: number): Promise<any> {
     const res = await fetch(`/api/shows/${ratingKey}/ai-style`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify({
+        prompt,
+        season_number: seasonNumber,
+        episode_number: episodeNumber
+      })
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({ detail: 'Failed to generate style with Gemini' }));

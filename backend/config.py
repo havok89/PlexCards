@@ -44,9 +44,10 @@ STILLS_DIR = CACHE_DIR / "stills"
 TEST_OUTPUT_DIR = CACHE_DIR / "test_output"
 PREVIEWS_DIR = CACHE_DIR / "previews"
 POSTERS_DIR = CACHE_DIR / "posters"
+LOGOS_DIR = CACHE_DIR / "logos"
 CUSTOM_FONTS_DIR = Path(os.getenv("CUSTOM_FONTS_DIR", BASE_DIR / "custom_fonts"))
 
-for directory in [DATA_DIR, CACHE_DIR, FONTS_DIR, STILLS_DIR, TEST_OUTPUT_DIR, PREVIEWS_DIR, CUSTOM_FONTS_DIR, POSTERS_DIR]:
+for directory in [DATA_DIR, CACHE_DIR, FONTS_DIR, STILLS_DIR, TEST_OUTPUT_DIR, PREVIEWS_DIR, CUSTOM_FONTS_DIR, POSTERS_DIR, LOGOS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
 # Database path (supports existing plexposters.db or new plexcards.db)

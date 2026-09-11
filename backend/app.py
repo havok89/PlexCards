@@ -543,7 +543,15 @@ def generate_preview(rating_key: str, payload: dict = Body(...)):
         "sg": style.get("subheading_gap", 16),
         "s_case": style.get("subheading_casing", "upper"),
         "s_pos": style.get("subheading_position", "above"),
-        "s_track": style.get("subheading_tracking", 0)
+        "s_track": style.get("subheading_tracking", 0),
+        "blur": style.get("frosted_blur_pct", 0),
+        "grain": style.get("film_grain_pct", 0),
+        "vig": style.get("vignette_pct", 0),
+        "shd": style.get("text_shadow_mode", "subtle"),
+        "logo": style.get("show_logo", 0),
+        "l_pos": style.get("logo_position", "top_right"),
+        "l_op": style.get("logo_opacity_pct", 80),
+        "l_mono": style.get("logo_monochrome", 1)
     }, sort_keys=True).encode()).hexdigest()
 
     cached_preview = PREVIEWS_DIR / f"{cache_key}.jpg"
@@ -569,16 +577,52 @@ def generate_preview(rating_key: str, payload: dict = Body(...)):
     if not still_path:
         raise HTTPException(status_code=404, detail="Could not fetch or generate still image for preview")
 
+    logo_path = sync_mgr.get_show_logo_path(show)
+
     card_img = renderer.render(
         base_image_path=still_path,
         episode_title=episode_title,
         season_num=season_num,
         episode_num=episode_num,
-        style_config=style
+        style_config=style,
+        logo_image_path=logo_path
     )
 
     card_img.save(cached_preview, format="JPEG", quality=92)
     return FileResponse(cached_preview, media_type="image/jpeg")
+
+@app.get("/api/shows/{rating_key}/raw-still")
+def get_raw_still(rating_key: str, season_number: int = 1, episode_number: int = 1):
+    """Return the raw episode still image for before/after comparison slider."""
+    from fastapi.responses import FileResponse
+    show = get_show(rating_key)
+    if not show:
+        raise HTTPException(status_code=404, detail="Show not found")
+    ep_dict = {"season_number": season_number, "episode_number": episode_number, "title": ""}
+    try:
+        episodes = sync_mgr.plex.get_show_episodes(rating_key)
+        for ep in episodes:
+            if ep["season_number"] == season_number and ep["episode_number"] == episode_number:
+                ep_dict = ep
+                break
+    except Exception:
+        pass
+    still_path = sync_mgr.get_episode_backdrop_still(show, ep_dict)
+    if not still_path or not still_path.exists():
+        raise HTTPException(status_code=404, detail="Still image not found")
+    return FileResponse(still_path, media_type="image/jpeg")
+
+@app.get("/api/shows/{rating_key}/logo")
+def get_show_logo(rating_key: str):
+    """Return the transparent PNG logo for a show if available."""
+    from fastapi.responses import FileResponse
+    show = get_show(rating_key)
+    if not show:
+        raise HTTPException(status_code=404, detail="Show not found")
+    logo_path = sync_mgr.get_show_logo_path(show)
+    if not logo_path or not logo_path.exists():
+        raise HTTPException(status_code=404, detail="Logo not available for this show")
+    return FileResponse(logo_path, media_type="image/png")
 
 @app.post("/api/shows/{rating_key}/apply")
 def apply_cards_to_show(rating_key: str, payload: dict = Body(default={})):
@@ -626,14 +670,20 @@ def ai_suggest_style(rating_key: str, payload: dict = Body(...)):
             pass
 
     user_prompt = payload.get("prompt", "")
-
     poster_path = POSTERS_DIR / f"{rating_key}.jpg"
+
+    # Fetch episode still for vision subject-aware analysis if available
+    s_num = payload.get("season_number", 1)
+    e_num = payload.get("episode_number", 1)
+    still_path = sync_mgr.get_episode_backdrop_still(show, {"season_number": s_num, "episode_number": e_num, "title": ""})
+
     suggestion = ai_styler.suggest_style(
         show_title=show["title"],
         genres=genres,
         overview=overview,
         user_prompt=user_prompt,
-        poster_path=poster_path if poster_path.exists() else None
+        poster_path=poster_path if poster_path.exists() else None,
+        still_path=still_path if (still_path and still_path.exists()) else None
     )
     if suggestion.get("error"):
         status_code = 503 if suggestion.get("is_unavailable") else 500

@@ -99,7 +99,15 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     subheading_gap: show.subheading_gap !== undefined ? show.subheading_gap : 16,
     subheading_casing: show.subheading_casing || 'upper',
     subheading_position: show.subheading_position || 'above',
-    subheading_tracking: show.subheading_tracking !== undefined ? show.subheading_tracking : 0
+    subheading_tracking: show.subheading_tracking !== undefined ? show.subheading_tracking : 0,
+    frosted_blur_pct: show.frosted_blur_pct !== undefined ? show.frosted_blur_pct : 0,
+    film_grain_pct: show.film_grain_pct !== undefined ? show.film_grain_pct : 0,
+    vignette_pct: show.vignette_pct !== undefined ? show.vignette_pct : 0,
+    text_shadow_mode: show.text_shadow_mode || 'none',
+    show_logo: show.show_logo !== undefined ? show.show_logo : 0,
+    logo_position: show.logo_position || 'top_right',
+    logo_opacity_pct: show.logo_opacity_pct !== undefined ? show.logo_opacity_pct : 90,
+    logo_monochrome: show.logo_monochrome !== undefined ? show.logo_monochrome : 0
   });
 
   // Load details, episodes, fonts, and available sets
@@ -159,7 +167,15 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           subheading_gap: data.show.subheading_gap !== undefined ? data.show.subheading_gap : 16,
           subheading_casing: data.show.subheading_casing || 'upper',
           subheading_position: data.show.subheading_position || 'above',
-          subheading_tracking: data.show.subheading_tracking !== undefined ? data.show.subheading_tracking : 0
+          subheading_tracking: data.show.subheading_tracking !== undefined ? data.show.subheading_tracking : 0,
+          frosted_blur_pct: data.show.frosted_blur_pct !== undefined ? data.show.frosted_blur_pct : 0,
+          film_grain_pct: data.show.film_grain_pct !== undefined ? data.show.film_grain_pct : 0,
+          vignette_pct: data.show.vignette_pct !== undefined ? data.show.vignette_pct : 0,
+          text_shadow_mode: data.show.text_shadow_mode || 'none',
+          show_logo: data.show.show_logo !== undefined ? data.show.show_logo : 0,
+          logo_position: data.show.logo_position || 'top_right',
+          logo_opacity_pct: data.show.logo_opacity_pct !== undefined ? data.show.logo_opacity_pct : 90,
+          logo_monochrome: data.show.logo_monochrome !== undefined ? data.show.logo_monochrome : 0
         });
         if (data.show.ai_prompt) {
           setAiReasoning(data.show.ai_prompt);
@@ -181,7 +197,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     const ep = episodes[selectedEpIndex];
     if (!ep) return;
 
-    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.subheading_font_family || ''}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.show_subheading}_${styleConfig.subheading_format}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}_${styleConfig.title_font_size}_${styleConfig.subheading_font_size}_${styleConfig.text_box_width_pct || 46}_${styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 16}_${styleConfig.subheading_casing || 'upper'}_${styleConfig.subheading_position || 'above'}_${styleConfig.subheading_tracking || 0}`;
+    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.subheading_font_family || ''}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.show_subheading}_${styleConfig.subheading_format}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}_${styleConfig.title_font_size}_${styleConfig.subheading_font_size}_${styleConfig.text_box_width_pct || 46}_${styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 16}_${styleConfig.subheading_casing || 'upper'}_${styleConfig.subheading_position || 'above'}_${styleConfig.subheading_tracking || 0}_${styleConfig.frosted_blur_pct || 0}_${styleConfig.film_grain_pct || 0}_${styleConfig.vignette_pct || 0}_${styleConfig.text_shadow_mode || 'none'}_${styleConfig.show_logo || 0}_${styleConfig.logo_position || 'top_right'}_${styleConfig.logo_opacity_pct || 90}_${styleConfig.logo_monochrome || 0}`;
     if (previewBlobCache.has(cacheKey)) {
       setPreviewUrl(previewBlobCache.get(cacheKey)!);
       setIsPreviewLoading(false);
@@ -420,7 +436,13 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     setAiReasoning('');
     try {
       const effectivePrompt = aiPrompt.trim();
-      const suggestion = await api.askAi(activeShow.rating_key, effectivePrompt);
+      const currentEp = episodes[selectedEpIndex];
+      const suggestion = await api.askAi(
+        activeShow.rating_key,
+        effectivePrompt,
+        currentEp?.season_number,
+        currentEp?.episode_number
+      );
       if (suggestion.font_family) {
         setStyleConfig((prev) => ({
           ...prev,
@@ -440,7 +462,15 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           subheading_tracking: suggestion.subheading_tracking !== undefined ? suggestion.subheading_tracking : prev.subheading_tracking,
           subheading_format: suggestion.subheading_format || prev.subheading_format,
           subheading_gap: suggestion.subheading_gap !== undefined ? suggestion.subheading_gap : prev.subheading_gap,
-          text_box_width_pct: suggestion.text_box_width_pct || prev.text_box_width_pct
+          text_box_width_pct: suggestion.text_box_width_pct || prev.text_box_width_pct,
+          frosted_blur_pct: suggestion.frosted_blur_pct !== undefined ? suggestion.frosted_blur_pct : prev.frosted_blur_pct,
+          film_grain_pct: suggestion.film_grain_pct !== undefined ? suggestion.film_grain_pct : prev.film_grain_pct,
+          vignette_pct: suggestion.vignette_pct !== undefined ? suggestion.vignette_pct : prev.vignette_pct,
+          text_shadow_mode: suggestion.text_shadow_mode || prev.text_shadow_mode,
+          show_logo: suggestion.show_logo !== undefined ? suggestion.show_logo : prev.show_logo,
+          logo_position: suggestion.logo_position || prev.logo_position,
+          logo_opacity_pct: suggestion.logo_opacity_pct !== undefined ? suggestion.logo_opacity_pct : prev.logo_opacity_pct,
+          logo_monochrome: suggestion.logo_monochrome !== undefined ? suggestion.logo_monochrome : prev.logo_monochrome
         }));
       }
       setAiReasoning(suggestion.reasoning || '');
@@ -460,7 +490,14 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
       const trackingLabel = suggestion.subheading_tracking ? `+${suggestion.subheading_tracking}px tracking` : 'no tracking';
       const subDetail = `• Subtitle: ${casingLabel}, ${trackingLabel}`;
 
-      const fullSummary = [fontSummary, colorSummary, layoutSummary, sizeSummary, subDetail].join('\n');
+      const fxParts: string[] = [];
+      if (suggestion.frosted_blur_pct) fxParts.push(`${suggestion.frosted_blur_pct}% Frosted Blur`);
+      if (suggestion.film_grain_pct) fxParts.push(`${suggestion.film_grain_pct}% Grain`);
+      if (suggestion.vignette_pct) fxParts.push(`${suggestion.vignette_pct}% Vignette`);
+      if (suggestion.text_shadow_mode && suggestion.text_shadow_mode !== 'none') fxParts.push(`${suggestion.text_shadow_mode} shadow`);
+      const fxSummary = fxParts.length > 0 ? `• Cinematic FX: ${fxParts.join(', ')}` : '';
+
+      const fullSummary = [fontSummary, colorSummary, layoutSummary, sizeSummary, subDetail, fxSummary].filter(Boolean).join('\n');
 
       showToast({
         type: 'success',

@@ -24,7 +24,8 @@ class AIStyler:
         genres: list,
         overview: str,
         user_prompt: Optional[str] = None,
-        poster_path: Optional[Any] = None
+        poster_path: Optional[Any] = None,
+        still_path: Optional[Any] = None
     ) -> Dict[str, Any]:
         """Ask Gemini for optimal typography, font pairing, colors, layout, and subheading styling for a show."""
         if not self._client:
@@ -38,18 +39,26 @@ class AIStyler:
                 "gradient_opacity_pct": 90,
                 "subheading_icon": "•",
                 "title_font_size": 108,
-                "subheading_font_size": 44,
+                "subheading_font_size": 52,
                 "text_position": "left_center",
                 "subheading_position": "above",
                 "subheading_casing": "upper",
                 "subheading_tracking": 0,
                 "subheading_format": "s_pad_ep_num",
-                "subheading_gap": 14,
+                "subheading_gap": 16,
                 "text_box_width_pct": 46,
+                "frosted_blur_pct": 0,
+                "film_grain_pct": 0,
+                "vignette_pct": 0,
+                "text_shadow_mode": "subtle",
+                "show_logo": 0,
+                "logo_position": "top_right",
+                "logo_opacity_pct": 80,
+                "logo_monochrome": 1,
                 "reasoning": "Default styling applied (Gemini key not configured)."
             }
 
-        # Try to load poster image for multimodal inspection
+        # Try to load poster and episode still images for multimodal inspection
         poster_img = None
         if poster_path:
             try:
@@ -58,6 +67,15 @@ class AIStyler:
                     poster_img = Image.open(p)
             except Exception as img_err:
                 logger.warning(f"Could not load poster image for AI styler: {img_err}")
+
+        still_img = None
+        if still_path:
+            try:
+                sp = Path(still_path)
+                if sp.exists():
+                    still_img = Image.open(sp)
+            except Exception as img_err:
+                logger.warning(f"Could not load episode still image for AI styler: {img_err}")
 
         has_poster = poster_img is not None
         poster_instructions = """
@@ -95,6 +113,16 @@ An official promotional poster for this show is ATTACHED. Visually inspect the p
    - "subheading_format": One of ["s_pad_ep_num", "season_num_ep_num", "s_pad_e_pad", "season_word_ep_word", "compact_pad"].
    - "subheading_icon": Separator character between season and episode text (e.g. "•", "-", ":", "/", or "" for none).
    - "subheading_gap": Integer between 12 and 30 (default 16, distance in px between title and subtitle).
+
+6. CINEMATIC FX & BRANDING BADGE:
+   - "frosted_blur_pct": Integer between 0 and 35 (0 for clean photography; 15-25 if the still has busy high-contrast textures or daylight scenes to create a silky frosted glass look under the text).
+   - "film_grain_pct": Integer between 0 and 20 (8-15 for authentic 35mm film texture on gritty, retro, or prestige drama cards).
+   - "vignette_pct": Integer between 0 and 30 (10-25 for moody perimeter shadow that focuses the eye toward the center and title).
+   - "text_shadow_mode": One of ["subtle", "cinematic", "glow", "none"] ("cinematic" for soft blurred photographic drop shadows; "glow" for neon, sci-fi, horror, or synthwave titles).
+   - "show_logo": 0 or 1 (1 to include the official transparent show logo watermark in the corner).
+   - "logo_position": One of ["top_right", "top_left", "bottom_right"] (choose opposite to the main title text position).
+   - "logo_opacity_pct": Integer between 60 and 95 (default 80).
+   - "logo_monochrome": 1 (clean white network badge) or 0 (original branding colors).
 """ if has_poster else """
 Analyze the show's genres and synopsis to select optimal typography, font pairing, colors, and layout:
 1. "font_family": High-quality open-source Google Font tailored to the show's aesthetic.
@@ -110,6 +138,13 @@ Analyze the show's genres and synopsis to select optimal typography, font pairin
 11. "subheading_format": "s_pad_ep_num", "season_num_ep_num", "s_pad_e_pad", "season_word_ep_word", or "compact_pad".
 12. "subheading_icon": "•", "-", ":", "/", or "".
 13. "subheading_gap": Integer between 12 and 30 (default 16).
+14. "text_box_width_pct": Integer between 40 and 55 (default 46).
+15. "frosted_blur_pct": Integer between 0 and 30 (default 0).
+16. "film_grain_pct": Integer between 0 and 20 (default 0).
+17. "vignette_pct": Integer between 0 and 25 (default 0).
+18. "text_shadow_mode": "subtle", "cinematic", "glow", or "none".
+19. "show_logo": 0 or 1.
+20. "logo_position": "top_right", "top_left", or "bottom_right".
 14. "text_box_width_pct": Integer between 40 and 55 (default 46).
 """
 
@@ -149,7 +184,7 @@ Return ONLY a JSON object with these exact keys:
 - "font_family": Name of the selected open-source Google Font for the title.
 - "subheading_font_family": Name of the selected complementary open-source Google Font for the subtitle.
 - "title_font_size": Integer between 90 and 130 (default 108).
-- "subheading_font_size": Integer between 36 and 54 (default 44).
+- "subheading_font_size": Integer between 42 and 62 (default 52).
 - "font_color": High-luminance hex color code for the main episode title.
 - "subheading_color": Complementary, readable hex color for season/episode text.
 - "text_position": One of ["left_center", "left_bottom", "center_bottom", "right_center", "right_bottom", "top_left", "center"].
@@ -161,14 +196,28 @@ Return ONLY a JSON object with these exact keys:
 - "subheading_tracking": Integer between 0 and 6.
 - "subheading_format": "s_pad_ep_num", "season_num_ep_num", "s_pad_e_pad", "season_word_ep_word", or "compact_pad".
 - "subheading_icon": Separator character between season and episode (e.g. "•", "-", ":", "/", or "").
-- "subheading_gap": Integer between 10 and 26 (default 14).
+- "subheading_gap": Integer between 12 and 30 (default 16).
 - "text_box_width_pct": Integer between 40 and 55 (default 46).
+- "frosted_blur_pct": Integer between 0 and 35 (default 0).
+- "film_grain_pct": Integer between 0 and 20 (default 0).
+- "vignette_pct": Integer between 0 and 30 (default 0).
+- "text_shadow_mode": One of ["subtle", "cinematic", "glow", "none"].
+- "show_logo": 0 or 1.
+- "logo_position": One of ["top_right", "top_left", "bottom_right"].
 - "reasoning": 1-2 sentences explaining how the font choices, positioning, casing, tracking, and palette capture the show's aesthetic and poster identity.
 """
 
         try:
             from google.genai import types
-            contents = [poster_img, prompt] if poster_img else prompt
+            contents = []
+            if still_img:
+                contents.append(still_img)
+            if poster_img:
+                contents.append(poster_img)
+            contents.append(prompt)
+            if len(contents) == 1:
+                contents = contents[0]
+
             response = self._client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=contents,
@@ -237,6 +286,33 @@ Return ONLY a JSON object with these exact keys:
             except Exception:
                 data["text_box_width_pct"] = 46
 
+            try:
+                data["frosted_blur_pct"] = max(0, min(40, int(data.get("frosted_blur_pct", 0) or 0)))
+            except Exception:
+                data["frosted_blur_pct"] = 0
+
+            try:
+                data["film_grain_pct"] = max(0, min(25, int(data.get("film_grain_pct", 0) or 0)))
+            except Exception:
+                data["film_grain_pct"] = 0
+
+            try:
+                data["vignette_pct"] = max(0, min(40, int(data.get("vignette_pct", 0) or 0)))
+            except Exception:
+                data["vignette_pct"] = 0
+
+            shd = str(data.get("text_shadow_mode", "subtle") or "subtle").lower()
+            data["text_shadow_mode"] = shd if shd in ("subtle", "cinematic", "glow", "none") else "subtle"
+
+            data["show_logo"] = 1 if data.get("show_logo") in (1, True, "1", "true") else 0
+            lpos = str(data.get("logo_position", "top_right") or "top_right").lower()
+            data["logo_position"] = lpos if lpos in ("top_right", "top_left", "bottom_right", "bottom_left") else "top_right"
+            try:
+                data["logo_opacity_pct"] = max(10, min(100, int(data.get("logo_opacity_pct", 80) or 80)))
+            except Exception:
+                data["logo_opacity_pct"] = 80
+            data["logo_monochrome"] = 1 if data.get("logo_monochrome", 1) in (1, True, "1", "true") else 0
+
             fmt = str(data.get("subheading_format", "s_pad_ep_num")).strip()
             valid_fmts = ("s_pad_ep_num", "season_num_ep_num", "s_pad_ep_pad", "s_pad_e_pad", "season_word_ep_word", "compact_pad")
             data["subheading_format"] = fmt if fmt in valid_fmts else "s_pad_ep_num"
@@ -293,6 +369,14 @@ Return ONLY a JSON object with these exact keys:
                 "subheading_format": "s_pad_ep_num",
                 "subheading_gap": 16,
                 "text_box_width_pct": 46,
+                "frosted_blur_pct": 0,
+                "film_grain_pct": 0,
+                "vignette_pct": 0,
+                "text_shadow_mode": "subtle",
+                "show_logo": 0,
+                "logo_position": "top_right",
+                "logo_opacity_pct": 80,
+                "logo_monochrome": 1,
                 "reasoning": user_msg
             }
 

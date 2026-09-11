@@ -61,6 +61,14 @@ def init_db():
         subheading_casing TEXT DEFAULT 'upper',
         subheading_position TEXT DEFAULT 'above',
         subheading_tracking INTEGER DEFAULT 0,
+        frosted_blur_pct INTEGER DEFAULT 0,
+        film_grain_pct INTEGER DEFAULT 0,
+        vignette_pct INTEGER DEFAULT 0,
+        text_shadow_mode TEXT DEFAULT 'subtle',
+        show_logo INTEGER DEFAULT 0,
+        logo_position TEXT DEFAULT 'top_right',
+        logo_opacity_pct INTEGER DEFAULT 80,
+        logo_monochrome INTEGER DEFAULT 1,
         FOREIGN KEY(rating_key) REFERENCES shows(rating_key) ON DELETE CASCADE
     )
     """)
@@ -88,6 +96,22 @@ def init_db():
         cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_position TEXT DEFAULT 'above'")
     if "subheading_tracking" not in columns:
         cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_tracking INTEGER DEFAULT 0")
+    if "frosted_blur_pct" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN frosted_blur_pct INTEGER DEFAULT 0")
+    if "film_grain_pct" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN film_grain_pct INTEGER DEFAULT 0")
+    if "vignette_pct" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN vignette_pct INTEGER DEFAULT 0")
+    if "text_shadow_mode" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN text_shadow_mode TEXT DEFAULT 'subtle'")
+    if "show_logo" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN show_logo INTEGER DEFAULT 0")
+    if "logo_position" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN logo_position TEXT DEFAULT 'top_right'")
+    if "logo_opacity_pct" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN logo_opacity_pct INTEGER DEFAULT 80")
+    if "logo_monochrome" not in columns:
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN logo_monochrome INTEGER DEFAULT 1")
     
     # Episode records and card status
     cursor.execute("""
@@ -231,7 +255,15 @@ def get_show(rating_key: str) -> Optional[Dict[str, Any]]:
            COALESCE(st.subheading_gap, 16) AS subheading_gap,
            COALESCE(st.subheading_casing, 'upper') AS subheading_casing,
            COALESCE(st.subheading_position, 'above') AS subheading_position,
-           COALESCE(st.subheading_tracking, 0) AS subheading_tracking
+           COALESCE(st.subheading_tracking, 0) AS subheading_tracking,
+           COALESCE(st.frosted_blur_pct, 0) AS frosted_blur_pct,
+           COALESCE(st.film_grain_pct, 0) AS film_grain_pct,
+           COALESCE(st.vignette_pct, 0) AS vignette_pct,
+           COALESCE(st.text_shadow_mode, 'subtle') AS text_shadow_mode,
+           COALESCE(st.show_logo, 0) AS show_logo,
+           COALESCE(st.logo_position, 'top_right') AS logo_position,
+           COALESCE(st.logo_opacity_pct, 80) AS logo_opacity_pct,
+           COALESCE(st.logo_monochrome, 1) AS logo_monochrome
     FROM shows s
     LEFT JOIN show_styles st ON s.rating_key = st.rating_key
     WHERE s.rating_key = ?
@@ -256,6 +288,14 @@ def get_all_shows() -> List[Dict[str, Any]]:
            COALESCE(st.subheading_casing, 'upper') AS subheading_casing,
            COALESCE(st.subheading_position, 'above') AS subheading_position,
            COALESCE(st.subheading_tracking, 0) AS subheading_tracking,
+           COALESCE(st.frosted_blur_pct, 0) AS frosted_blur_pct,
+           COALESCE(st.film_grain_pct, 0) AS film_grain_pct,
+           COALESCE(st.vignette_pct, 0) AS vignette_pct,
+           COALESCE(st.text_shadow_mode, 'subtle') AS text_shadow_mode,
+           COALESCE(st.show_logo, 0) AS show_logo,
+           COALESCE(st.logo_position, 'top_right') AS logo_position,
+           COALESCE(st.logo_opacity_pct, 80) AS logo_opacity_pct,
+           COALESCE(st.logo_monochrome, 1) AS logo_monochrome,
            (SELECT COUNT(*) FROM episodes e WHERE e.show_rating_key = s.rating_key AND e.card_source = 'mediux') AS mediux_cards_count,
            (SELECT COUNT(*) FROM episodes e WHERE e.show_rating_key = s.rating_key AND e.card_source LIKE 'generator%') AS generator_cards_count
     FROM shows s
@@ -285,7 +325,9 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
                              gradient_side, gradient_width_pct, gradient_opacity_pct, 
                              show_subheading, subheading_format, subheading_icon, ai_prompt, has_custom_style,
                              title_font_size, subheading_font_size, text_box_width_pct, subheading_gap,
-                             subheading_casing, subheading_position, subheading_tracking)
+                             subheading_casing, subheading_position, subheading_tracking,
+                             frosted_blur_pct, film_grain_pct, vignette_pct, text_shadow_mode,
+                             show_logo, logo_position, logo_opacity_pct, logo_monochrome)
     VALUES (:rating_key, 
             COALESCE(:layout, 'standard'), 
             COALESCE(:text_position, 'left_center'), 
@@ -307,7 +349,15 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
             COALESCE(:subheading_gap, 16),
             COALESCE(:subheading_casing, 'upper'),
             COALESCE(:subheading_position, 'above'),
-            COALESCE(:subheading_tracking, 0))
+            COALESCE(:subheading_tracking, 0),
+            COALESCE(:frosted_blur_pct, 0),
+            COALESCE(:film_grain_pct, 0),
+            COALESCE(:vignette_pct, 0),
+            COALESCE(:text_shadow_mode, 'subtle'),
+            COALESCE(:show_logo, 0),
+            COALESCE(:logo_position, 'top_right'),
+            COALESCE(:logo_opacity_pct, 80),
+            COALESCE(:logo_monochrome, 1))
     ON CONFLICT(rating_key) DO UPDATE SET
         layout = COALESCE(excluded.layout, show_styles.layout),
         text_position = COALESCE(excluded.text_position, show_styles.text_position),
@@ -329,7 +379,15 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
         subheading_gap = COALESCE(excluded.subheading_gap, show_styles.subheading_gap),
         subheading_casing = COALESCE(excluded.subheading_casing, show_styles.subheading_casing),
         subheading_position = COALESCE(excluded.subheading_position, show_styles.subheading_position),
-        subheading_tracking = COALESCE(excluded.subheading_tracking, show_styles.subheading_tracking)
+        subheading_tracking = COALESCE(excluded.subheading_tracking, show_styles.subheading_tracking),
+        frosted_blur_pct = COALESCE(excluded.frosted_blur_pct, show_styles.frosted_blur_pct),
+        film_grain_pct = COALESCE(excluded.film_grain_pct, show_styles.film_grain_pct),
+        vignette_pct = COALESCE(excluded.vignette_pct, show_styles.vignette_pct),
+        text_shadow_mode = COALESCE(excluded.text_shadow_mode, show_styles.text_shadow_mode),
+        show_logo = COALESCE(excluded.show_logo, show_styles.show_logo),
+        logo_position = COALESCE(excluded.logo_position, show_styles.logo_position),
+        logo_opacity_pct = COALESCE(excluded.logo_opacity_pct, show_styles.logo_opacity_pct),
+        logo_monochrome = COALESCE(excluded.logo_monochrome, show_styles.logo_monochrome)
     """, {
         "layout": style_data.get("layout"),
         "text_position": style_data.get("text_position"),
@@ -352,6 +410,14 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
         "subheading_casing": style_data.get("subheading_casing"),
         "subheading_position": style_data.get("subheading_position"),
         "subheading_tracking": style_data.get("subheading_tracking"),
+        "frosted_blur_pct": style_data.get("frosted_blur_pct"),
+        "film_grain_pct": style_data.get("film_grain_pct"),
+        "vignette_pct": style_data.get("vignette_pct"),
+        "text_shadow_mode": style_data.get("text_shadow_mode"),
+        "show_logo": style_data.get("show_logo"),
+        "logo_position": style_data.get("logo_position"),
+        "logo_opacity_pct": style_data.get("logo_opacity_pct"),
+        "logo_monochrome": style_data.get("logo_monochrome"),
         "rating_key": rating_key
     })
     conn.commit()

@@ -1,7 +1,8 @@
+import os
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List
-from PIL import Image, ImageDraw, ImageFont
+from typing import Dict, Any, Optional, Tuple, List, Union
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops
 import requests
 
 from backend.config import FONTS_DIR, CUSTOM_FONTS_DIR
@@ -236,13 +237,14 @@ class TitleCardRenderer:
 
     def render(
         self,
-        base_image_path: Path,
+        base_image_path: Union[Path, str],
         episode_title: str,
         season_num: int,
         episode_num: int,
-        style_config: Optional[Dict[str, Any]] = None
+        style_config: Optional[Dict[str, Any]] = None,
+        logo_image_path: Optional[Union[Path, str]] = None
     ) -> Image.Image:
-        """Render a title card with styled typography, positioning, and gradients."""
+        """Render a title card with styled typography, positioning, gradients, and cinematic FX."""
         style = style_config or {}
         text_pos = style.get("text_position", "left_center")
         font_family = style.get("font_family", "Oswald")
@@ -280,12 +282,21 @@ class TitleCardRenderer:
         sub_font_size = int(style.get("subheading_font_size") or 52)
         sub_gap = int(style.get("subheading_gap") if style.get("subheading_gap") is not None else 16)
 
+        # Cinematic FX settings
+        frosted_blur_pct = int(style.get("frosted_blur_pct", 0) or 0)
+        film_grain_pct = int(style.get("film_grain_pct", 0) or 0)
+        vignette_pct = int(style.get("vignette_pct", 0) or 0)
+        text_shadow_mode = str(style.get("text_shadow_mode", "subtle") or "subtle").lower()
+        show_logo = bool(style.get("show_logo", 0))
+        logo_pos = str(style.get("logo_position", "top_right") or "top_right").lower()
+        logo_opacity_pct = int(style.get("logo_opacity_pct", 80) or 80)
+        logo_monochrome = bool(style.get("logo_monochrome", 1))
+
         # 3. Text Preparation & Width Calculation
         # Layout metrics based on text_position and text_box_width_pct
         margin_side = 110
         custom_tb_pct = style.get("text_box_width_pct")
         if custom_tb_pct:
-            # Custom text box width percentage (e.g. 50% = 960px of the still)
             max_title_width = int(1920 * (int(custom_tb_pct) / 100.0))
             if not is_h_center and grad_side in ("left", "right"):
                 min_grad = int(((max_title_width + margin_side + 40) / 1920.0) * 100)
@@ -293,19 +304,40 @@ class TitleCardRenderer:
         elif is_h_center:
             max_title_width = 1500
         else:
-            # Default width: ~42% of still width (~780px)
             max_title_width = int(1920 * (grad_width_pct / 100.0)) - margin_side - 30
         
         # Load and resize base still to standard 1080p
         base_img = Image.open(base_image_path).convert("RGBA")
         base_img = base_img.resize((1920, 1080), Image.Resampling.LANCZOS)
         
-        # 1. Apply Gradient
+        # Create Gradient overlay
         gradient = self._create_gradient(grad_side, grad_width_pct, grad_opacity_pct)
+
+        # 1. Apply Frosted Glass Selective Blur (softly blurs still underneath the gradient)
+        if frosted_blur_pct > 0:
+            blur_radius = max(2, int((min(50, frosted_blur_pct) / 100.0) * 35))
+            blurred_base = base_img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+            grad_alpha = gradient.split()[3]
+            base_img = Image.composite(blurred_base, base_img, grad_alpha)
+
+        # 2. Apply Perimeter Vignette
+        if vignette_pct > 0:
+            v_opacity = int(255 * (min(50, vignette_pct) / 100.0))
+            vmask_full = Image.new("L", (1920, 1080), v_opacity)
+            vmask_inner = Image.new("L", (1920, 1080), 0)
+            idraw = ImageDraw.Draw(vmask_inner)
+            idraw.ellipse([(110, 60), (1920 - 110, 1080 - 60)], fill=255)
+            vmask_inner = vmask_inner.filter(ImageFilter.GaussianBlur(radius=120))
+            vmask_final = ImageChops.subtract(vmask_full, vmask_inner)
+            vignette = Image.new("RGBA", (1920, 1080), (0, 0, 0, 0))
+            vignette.putalpha(vmask_final)
+            base_img = Image.alpha_composite(base_img, vignette)
+
+        # 3. Composite Gradient
         card = Image.alpha_composite(base_img, gradient)
         draw = ImageDraw.Draw(card)
         
-        # 2. Setup Fonts
+        # 4. Setup Fonts
         font_path = self.get_font_path(font_family)
         if font_path.exists():
             title_font = ImageFont.truetype(str(font_path), size=title_font_size)
@@ -339,95 +371,92 @@ class TitleCardRenderer:
 
         line_height = int(title_font_size * 1.12)
         total_title_height = len(lines) * line_height
+        
+        # Layout subtitle metrics
+        sub_height = int(sub_font_size * 1.2) if show_subheading else 0
+        sub_pos_mode = style.get("subheading_position", "above") # 'above' or 'below'
+        sub_tracking = int(style.get("subheading_tracking", 0) or 0)
+        sub_casing = style.get("subheading_casing", "upper") # 'upper', 'title', 'lower'
 
-        sub_position = style.get("subheading_position", "above")
-        is_sub_below = sub_position == "below"
-
-        # Compute Vertical Start Y
-        if is_top:
-            if is_sub_below:
-                start_y = 110
-                sub_y = start_y + total_title_height + sub_gap
-            else:
-                sub_y = 110
-                start_y = sub_y + (sub_font_size + sub_gap if show_subheading else 0)
-        elif is_bottom:
-            bottom_baseline = 980
-            if is_sub_below:
-                sub_y = bottom_baseline - sub_font_size
-                start_y = sub_y - sub_gap - total_title_height
-            else:
-                start_y = bottom_baseline - total_title_height
-                sub_y = start_y - sub_font_size - sub_gap
-        else: # middle / center
-            total_block_h = total_title_height + (sub_font_size + sub_gap if show_subheading else 0)
-            block_top = 540 - (total_block_h // 2)
-            if is_sub_below:
-                start_y = block_top
-                sub_y = start_y + total_title_height + sub_gap
-            else:
-                sub_y = block_top
-                start_y = sub_y + sub_font_size + sub_gap
-
-        # 4. Render Subheading
+        total_block_height = total_title_height
         if show_subheading:
-            season_part, episode_part, has_sep = self.get_subheading_parts(season_num, episode_num, sub_fmt)
+            total_block_height += sub_gap + sub_height
 
-            # Apply Casing (upper, title, lower)
-            sub_casing = style.get("subheading_casing", "upper")
-            if sub_casing == "title":
-                season_part = season_part.title() if season_part else ""
-                episode_part = episode_part.title() if episode_part else ""
-            elif sub_casing == "lower":
-                season_part = season_part.lower() if season_part else ""
-                episode_part = episode_part.lower() if episode_part else ""
-            elif sub_casing == "upper":
-                season_part = season_part.upper() if season_part else ""
-                episode_part = episode_part.upper() if episode_part else ""
+        # Vertical alignment
+        if is_middle:
+            start_y = (1080 - total_block_height) // 2
+        elif is_bottom:
+            margin_bottom = 120
+            start_y = 1080 - margin_bottom - total_block_height
+        else: # is_top
+            margin_top = 100
+            start_y = margin_top
 
-            # Tracking / Letter Spacing
-            sub_tracking = int(style.get("subheading_tracking", 0) or 0)
+        # Subtitle positioning
+        if sub_pos_mode == "below":
+            sub_y = start_y + total_title_height + sub_gap
+        else: # 'above'
+            sub_y = start_y
+            start_y = start_y + sub_height + sub_gap
 
-            def get_tracked_width(text: str, font: ImageFont.ImageFont, tracking: int = 0) -> int:
+        # Optional soft shadow / glow FX layer
+        fx_layer = None
+        fx_draw = None
+        if text_shadow_mode in ("cinematic", "glow"):
+            fx_layer = Image.new("RGBA", (1920, 1080), (0, 0, 0, 0))
+            fx_draw = ImageDraw.Draw(fx_layer)
+
+        def draw_tracked_text_to(target_draw, pos: Tuple[int, int], text: str, font, fill, tracking: int = 0):
+            x, y = pos
+            if tracking <= 0:
+                target_draw.text((x, y), text, font=font, fill=fill)
+                return
+            for char in text:
+                target_draw.text((x, y), char, font=font, fill=fill)
+                char_bbox = target_draw.textbbox((0, 0), char, font=font)
+                char_w = char_bbox[2] - char_bbox[0]
+                x += char_w + tracking
+
+        # 5. Render Subheading if enabled
+        if show_subheading:
+            season_part, episode_part, draw_sep = self.get_subheading_parts(season_num, episode_num, sub_fmt)
+            
+            def apply_casing(txt: str) -> str:
+                if not txt:
+                    return ""
+                if sub_casing == "lower":
+                    return txt.lower()
+                elif sub_casing == "title":
+                    return txt.title()
+                return txt.upper()
+
+            season_part = apply_casing(season_part)
+            episode_part = apply_casing(episode_part)
+
+            icon_map = {"dot": "•", "delta": "▲", "dash": "-", "slash": "/", "none": ""}
+            sep_char = icon_map.get(sub_icon, sub_icon) if sub_icon else "•"
+
+            def measure_tracked_width(text: str, font, tracking: int) -> int:
                 if not text:
                     return 0
-                if tracking <= 0 or len(text) <= 1:
+                if tracking <= 0:
                     bbox = draw.textbbox((0, 0), text, font=font)
                     return bbox[2] - bbox[0]
-                total = sum(font.getlength(ch) for ch in text) + (len(text) - 1) * tracking
-                return int(round(total))
+                w = 0
+                for char in text:
+                    bbox = draw.textbbox((0, 0), char, font=font)
+                    w += (bbox[2] - bbox[0]) + tracking
+                return max(0, w - tracking)
 
-            def draw_tracked_text(xy: Tuple[int, int], text: str, font: ImageFont.ImageFont, fill: Any, tracking: int = 0):
-                if not text:
-                    return
-                x, y = xy
-                if tracking <= 0 or len(text) <= 1:
-                    draw.text((x, y), text, font=font, fill=fill)
-                    return
-                for ch in text:
-                    draw.text((x, y), ch, font=font, fill=fill)
-                    x += font.getlength(ch) + tracking
-
-            # Resolve separator character
-            raw_icon = str(sub_icon).strip() if sub_icon else ""
-            if raw_icon in ("dot", "bullet", "delta"):
-                sep_char = "•"
-            elif raw_icon == "dash":
-                sep_char = "—"
-            elif raw_icon == "none":
-                sep_char = ""
-            else:
-                sep_char = raw_icon
-
-            draw_sep = has_sep and bool(sep_char)
-
-            gap = max(10, int(sub_font_size * 0.47))
-            s_w = get_tracked_width(season_part, sub_font, sub_tracking)
-            e_w = get_tracked_width(episode_part, sub_font, sub_tracking)
-            sep_w = get_tracked_width(sep_char, sub_font, 0) if draw_sep else 0
+            s_w = measure_tracked_width(season_part, sub_font, sub_tracking)
+            e_w = measure_tracked_width(episode_part, sub_font, sub_tracking)
+            
+            sep_bbox = draw.textbbox((0, 0), sep_char, font=sub_font)
+            sep_w = (sep_bbox[2] - sep_bbox[0]) if draw_sep and sep_char else 0
+            gap = int(sub_font_size * 0.35)
 
             if season_part and episode_part:
-                total_sub_w = s_w + gap + (sep_w + gap if draw_sep else 0) + e_w
+                total_sub_w = s_w + gap + (sep_w + gap if draw_sep and sep_char else 0) + e_w
             elif season_part:
                 total_sub_w = s_w
             elif episode_part:
@@ -445,26 +474,39 @@ class TitleCardRenderer:
 
                 curr_x = sub_start_x
 
-                # Draw Season part if present
+                # Draw Season shadow/glow
                 if season_part:
-                    draw_tracked_text((curr_x + 2, sub_y + 2), season_part, font=sub_font, fill=(0, 0, 0, 200), tracking=sub_tracking)
-                    draw_tracked_text((curr_x, sub_y), season_part, font=sub_font, fill=sub_color, tracking=sub_tracking)
+                    if text_shadow_mode == "cinematic" and fx_draw:
+                        draw_tracked_text_to(fx_draw, (curr_x + 3, sub_y + 3), season_part, font=sub_font, fill=(0, 0, 0, 210), tracking=sub_tracking)
+                    elif text_shadow_mode == "glow" and fx_draw:
+                        fx_draw.text((curr_x, sub_y), season_part, font=sub_font, fill=sub_color + (160,))
+                    elif text_shadow_mode == "subtle":
+                        draw_tracked_text_to(draw, (curr_x + 2, sub_y + 2), season_part, font=sub_font, fill=(0, 0, 0, 200), tracking=sub_tracking)
                     curr_x += s_w
 
-                # Draw separator if both parts present
+                # Separator
                 if season_part and episode_part:
                     curr_x += gap
-                    if draw_sep:
-                        draw.text((curr_x + 2, sub_y + 2), sep_char, font=sub_font, fill=(0, 0, 0, 200))
-                        draw.text((curr_x, sub_y), sep_char, font=sub_font, fill=sub_color)
+                    if draw_sep and sep_char:
+                        if text_shadow_mode == "cinematic" and fx_draw:
+                            fx_draw.text((curr_x + 3, sub_y + 3), sep_char, font=sub_font, fill=(0, 0, 0, 210))
+                        elif text_shadow_mode == "glow" and fx_draw:
+                            fx_draw.text((curr_x, sub_y), sep_char, font=sub_font, fill=sub_color + (160,))
+                        elif text_shadow_mode == "subtle":
+                            draw.text((curr_x + 2, sub_y + 2), sep_char, font=sub_font, fill=(0, 0, 0, 200))
                         curr_x += sep_w + gap
 
-                # Draw Episode part if present
+                # Episode shadow/glow
                 if episode_part:
-                    draw_tracked_text((curr_x + 2, sub_y + 2), episode_part, font=sub_font, fill=(0, 0, 0, 200), tracking=sub_tracking)
-                    draw_tracked_text((curr_x, sub_y), episode_part, font=sub_font, fill=sub_color, tracking=sub_tracking)
+                    if text_shadow_mode == "cinematic" and fx_draw:
+                        draw_tracked_text_to(fx_draw, (curr_x + 3, sub_y + 3), episode_part, font=sub_font, fill=(0, 0, 0, 210), tracking=sub_tracking)
+                    elif text_shadow_mode == "glow" and fx_draw:
+                        fx_draw.text((curr_x, sub_y), episode_part, font=sub_font, fill=sub_color + (160,))
+                    elif text_shadow_mode == "subtle":
+                        draw_tracked_text_to(draw, (curr_x + 2, sub_y + 2), episode_part, font=sub_font, fill=(0, 0, 0, 200), tracking=sub_tracking)
 
-        # 5. Render Title Lines
+        # 6. Render Title Shadows/Glow to fx_draw or draw
+        title_positions = []
         for i, line in enumerate(lines):
             y = start_y + (i * line_height)
             line_bbox = draw.textbbox((0, 0), line, font=title_font)
@@ -477,9 +519,91 @@ class TitleCardRenderer:
             else:
                 line_x = margin_side
 
-            # Drop shadow
-            draw.text((line_x + 3, y + 3), line, font=title_font, fill=(0, 0, 0, 220))
+            title_positions.append((line_x, y, line))
+
+            if text_shadow_mode == "cinematic" and fx_draw:
+                fx_draw.text((line_x + 4, y + 4), line, font=title_font, fill=(0, 0, 0, 230))
+            elif text_shadow_mode == "glow" and fx_draw:
+                glow_col = font_color + (190,) if len(font_color) == 3 else font_color
+                fx_draw.text((line_x, y), line, font=title_font, fill=glow_col)
+            elif text_shadow_mode == "subtle":
+                draw.text((line_x + 3, y + 3), line, font=title_font, fill=(0, 0, 0, 220))
+
+        # Composite FX Layer (blurring soft shadow or glow)
+        if fx_layer is not None:
+            if text_shadow_mode == "cinematic":
+                fx_layer = fx_layer.filter(ImageFilter.GaussianBlur(radius=5))
+            elif text_shadow_mode == "glow":
+                fx_layer = fx_layer.filter(ImageFilter.GaussianBlur(radius=12))
+            card = Image.alpha_composite(card, fx_layer)
+            draw = ImageDraw.Draw(card)
+
+        # 7. Render Main Sharp Subtitle
+        if show_subheading and total_sub_w > 0:
+            curr_x = sub_start_x
+            if season_part:
+                draw_tracked_text_to(draw, (curr_x, sub_y), season_part, font=sub_font, fill=sub_color, tracking=sub_tracking)
+                curr_x += s_w
+            if season_part and episode_part:
+                curr_x += gap
+                if draw_sep and sep_char:
+                    draw.text((curr_x, sub_y), sep_char, font=sub_font, fill=sub_color)
+                    curr_x += sep_w + gap
+            if episode_part:
+                draw_tracked_text_to(draw, (curr_x, sub_y), episode_part, font=sub_font, fill=sub_color, tracking=sub_tracking)
+
+        # 8. Render Main Sharp Title Lines
+        for line_x, y, line in title_positions:
             draw.text((line_x, y), line, font=title_font, fill=font_color)
+
+        # 9. Show Logo Watermark Overlay
+        if show_logo and logo_image_path and Path(logo_image_path).exists():
+            try:
+                logo_img = Image.open(logo_image_path).convert("RGBA")
+                max_logo_w, max_logo_h = 360, 130
+                logo_ratio = min(max_logo_w / logo_img.width, max_logo_h / logo_img.height)
+                new_w = max(1, int(logo_img.width * logo_ratio))
+                new_h = max(1, int(logo_img.height * logo_ratio))
+                logo_resized = logo_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+                if logo_monochrome:
+                    r, g, b, a = logo_resized.split()
+                    white_img = Image.new("RGB", logo_resized.size, (255, 255, 255))
+                    logo_resized = Image.merge("RGBA", (*white_img.split(), a))
+
+                if logo_opacity_pct < 100:
+                    alpha = Image.eval(logo_resized.split()[3], lambda p: int(p * (max(10, min(100, logo_opacity_pct)) / 100.0)))
+                    logo_resized.putalpha(alpha)
+
+                margin_x, margin_y = 85, 75
+                if logo_pos == "top_left":
+                    logo_x, logo_y = margin_x, margin_y
+                elif logo_pos == "bottom_right":
+                    logo_x = 1920 - new_w - margin_x
+                    logo_y = 1080 - new_h - margin_y
+                elif logo_pos == "bottom_left":
+                    logo_x = margin_x
+                    logo_y = 1080 - new_h - margin_y
+                else: # top_right
+                    logo_x = 1920 - new_w - margin_x
+                    logo_y = margin_y
+
+                logo_canvas = Image.new("RGBA", (1920, 1080), (0, 0, 0, 0))
+                logo_canvas.paste(logo_resized, (logo_x, logo_y), logo_resized)
+                card = Image.alpha_composite(card, logo_canvas)
+            except Exception as e:
+                logger.warning(f"Could not render show logo badge: {e}")
+
+        # 10. Film Grain Texture Overlay
+        if film_grain_pct > 0:
+            w_tile, h_tile = 480, 270
+            raw_noise = os.urandom(w_tile * h_tile)
+            grain_tile = Image.frombytes("L", (w_tile, h_tile), raw_noise).resize((1920, 1080), Image.Resampling.BILINEAR)
+            alpha_scale = (min(25, film_grain_pct) / 100.0) * 1.8
+            grain_alpha = Image.eval(grain_tile, lambda p: int(abs(p - 128) * alpha_scale))
+            grain_layer = Image.new("RGBA", (1920, 1080), (255, 255, 255, 0))
+            grain_layer.putalpha(grain_alpha)
+            card = Image.alpha_composite(card, grain_layer)
 
         return card.convert("RGB")
 

@@ -33,6 +33,14 @@ export interface Show {
   subheading_casing?: 'upper' | 'title' | 'lower';
   subheading_position?: 'above' | 'below';
   subheading_tracking?: number;
+  frosted_blur_pct?: number;
+  film_grain_pct?: number;
+  vignette_pct?: number;
+  text_shadow_mode?: 'subtle' | 'cinematic' | 'glow' | 'none';
+  show_logo?: number;
+  logo_position?: 'top_right' | 'top_left' | 'bottom_right' | 'bottom_left';
+  logo_opacity_pct?: number;
+  logo_monochrome?: number;
   ai_prompt?: string;
   has_custom_style?: number;
 }
@@ -65,6 +73,14 @@ export interface StyleConfig {
   subheading_casing?: 'upper' | 'title' | 'lower';
   subheading_position?: 'above' | 'below';
   subheading_tracking?: number;
+  frosted_blur_pct?: number;
+  film_grain_pct?: number;
+  vignette_pct?: number;
+  text_shadow_mode?: 'subtle' | 'cinematic' | 'glow' | 'none';
+  show_logo?: number;
+  logo_position?: 'top_right' | 'top_left' | 'bottom_right' | 'bottom_left';
+  logo_opacity_pct?: number;
+  logo_monochrome?: number;
   ai_prompt?: string;
 }
 

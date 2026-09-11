@@ -106,6 +106,16 @@ class SyncManager:
                 return None
         return canvas_path
 
+    def get_show_logo_path(self, show: Dict[str, Any]) -> Optional[Path]:
+        """Fetch or return cached transparent PNG logo for a show."""
+        tmdb_id = show.get("tmdb_id")
+        if tmdb_id:
+            try:
+                return self.tmdb.get_show_logo(int(tmdb_id))
+            except Exception as e:
+                logger.warning(f"Could not load logo for show {show.get('title')}: {e}")
+        return None
+
     def scan_and_index_library(self):
         """Scan all TV shows from Plex and store in database. Auto-matches shows with TMDb if Plex has no TMDb ID."""
         shows = self.plex.get_all_shows()
@@ -280,7 +290,8 @@ class SyncManager:
                     episode_title=ep["title"],
                     season_num=s_num,
                     episode_num=e_num,
-                    style_config=show
+                    style_config=show,
+                    logo_image_path=self.get_show_logo_path(show)
                 )
 
                 clean_title = "".join(c for c in show["title"] if c.isalnum() or c in (" ", "-", "_")).strip()
@@ -449,7 +460,8 @@ class SyncManager:
                         episode_title=ep["title"],
                         season_num=s_num,
                         episode_num=e_num,
-                        style_config=show
+                        style_config=show,
+                        logo_image_path=self.get_show_logo_path(show)
                     )
                     if is_test:
                         show_test_dir = TEST_OUTPUT_DIR / clean_title

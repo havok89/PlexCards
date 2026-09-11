@@ -2,7 +2,7 @@ import logging
 import requests
 from typing import Optional, Dict, Any, List
 from pathlib import Path
-from backend.config import TMDB_API_KEY, STILLS_DIR
+from backend.config import TMDB_API_KEY, STILLS_DIR, LOGOS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +23,18 @@ class TMDbClient:
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 data = r.json()
-                # Find clean PNG logo if available
+                # Find clean PNG logo if available, prioritizing English
                 logos = data.get("images", {}).get("logos", [])
                 logo_path = None
                 for l in logos:
-                    if l.get("file_path", "").endswith(".png"):
+                    if l.get("file_path", "").endswith(".png") and l.get("iso_639_1") == "en":
                         logo_path = l.get("file_path")
                         break
+                if not logo_path:
+                    for l in logos:
+                        if l.get("file_path", "").endswith(".png"):
+                            logo_path = l.get("file_path")
+                            break
                 
                 return {
                     "tmdb_id": tmdb_id,
@@ -44,6 +49,27 @@ class TMDbClient:
                 }
         except Exception as e:
             logger.error(f"Error fetching TMDb show {tmdb_id}: {e}")
+        return None
+
+    def get_show_logo(self, tmdb_id: int) -> Optional[Path]:
+        """Fetch and cache transparent show logo PNG."""
+        if not self.api_key or not tmdb_id:
+            return None
+
+        cache_filename = LOGOS_DIR / f"{tmdb_id}.png"
+        if cache_filename.exists():
+            return cache_filename
+
+        details = self.get_show_details(tmdb_id)
+        if details and details.get("logo_url"):
+            try:
+                img_res = requests.get(details["logo_url"], timeout=15)
+                if img_res.status_code == 200:
+                    with open(cache_filename, "wb") as f:
+                        f.write(img_res.content)
+                    return cache_filename
+            except Exception as e:
+                logger.warning(f"Failed to download logo for {tmdb_id}: {e}")
         return None
 
     def get_episode_still(self, tmdb_id: int, season_number: int, episode_number: int) -> Optional[Path]:

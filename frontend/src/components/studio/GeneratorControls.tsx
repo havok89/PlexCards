@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { Sparkles, Loader2, Upload, CheckCircle } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Sparkles, Loader2, Upload, CheckCircle, Film, Image as ImageIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { StyleConfig } from '../../types';
 
 export const getSubheadingPreview = (
@@ -133,6 +133,7 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isCustomFormat = !PREDEFINED_FORMATS.includes(styleConfig.subheading_format);
+  const [isFxOpen, setIsFxOpen] = useState(true);
 
   return (
     <div className="border-t border-gray-800 pt-4 flex flex-col gap-4">
@@ -989,6 +990,241 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
             className="w-full accent-brand-500 bg-dark-800"
           />
         </div>
+      </div>
+
+      {/* Cinematic FX Suite & Logo Badges Section */}
+      <div className="border border-gray-800 rounded-xl p-3 bg-dark-900 flex flex-col gap-3">
+        <button
+          type="button"
+          onClick={() => setIsFxOpen(!isFxOpen)}
+          className="flex items-center justify-between text-left group w-full"
+        >
+          <div className="flex items-center gap-2">
+            <Film className="w-3.5 h-3.5 text-brand-400" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-300 group-hover:text-white transition">
+              Cinematic FX & Badges
+            </span>
+          </div>
+          {isFxOpen ? (
+            <ChevronUp className="w-3.5 h-3.5 text-gray-500 group-hover:text-gray-300" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-gray-500 group-hover:text-gray-300" />
+          )}
+        </button>
+
+        {isFxOpen && (
+          <div className="flex flex-col gap-3 pt-1 border-t border-gray-800/60">
+            {/* Frosted Glass Blur */}
+            <div>
+              <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                <span>Frosted Background Blur (Under Text)</span>
+                <span className="font-mono">{styleConfig.frosted_blur_pct || 0}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="40"
+                value={styleConfig.frosted_blur_pct || 0}
+                onChange={(e) =>
+                  setStyleConfig((prev) => ({
+                    ...prev,
+                    frosted_blur_pct: Number(e.target.value)
+                  }))
+                }
+                className="w-full accent-brand-500 bg-dark-800"
+              />
+              <span className="text-[10px] text-gray-400 block mt-0.5">
+                Softens busy background photography beneath the gradient while keeping the rest of the image sharp.
+              </span>
+            </div>
+
+            {/* 35mm Film Grain */}
+            <div>
+              <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                <span>35mm Analog Film Grain</span>
+                <span className="font-mono">{styleConfig.film_grain_pct || 0}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="25"
+                value={styleConfig.film_grain_pct || 0}
+                onChange={(e) =>
+                  setStyleConfig((prev) => ({
+                    ...prev,
+                    film_grain_pct: Number(e.target.value)
+                  }))
+                }
+                className="w-full accent-brand-500 bg-dark-800"
+              />
+              <span className="text-[10px] text-gray-400 block mt-0.5">
+                Adds authentic 35mm analog grain and eliminates digital color banding in dark gradients.
+              </span>
+            </div>
+
+            {/* Perimeter Cinema Vignette */}
+            <div>
+              <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                <span>Perimeter Cinema Vignette</span>
+                <span className="font-mono">{styleConfig.vignette_pct || 0}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="40"
+                value={styleConfig.vignette_pct || 0}
+                onChange={(e) =>
+                  setStyleConfig((prev) => ({
+                    ...prev,
+                    vignette_pct: Number(e.target.value)
+                  }))
+                }
+                className="w-full accent-brand-500 bg-dark-800"
+              />
+              <span className="text-[10px] text-gray-400 block mt-0.5">
+                Subtle corner falloff that frames composition and enhances focus.
+              </span>
+            </div>
+
+            {/* Text Shadow Style */}
+            <div>
+              <label className="text-[11px] text-gray-400 block mb-1.5">Text Shadow & Depth</label>
+              <div className="grid grid-cols-4 gap-1.5 text-[11px]">
+                {[
+                  { id: 'none', label: 'None' },
+                  { id: 'subtle', label: 'Subtle' },
+                  { id: 'cinematic', label: 'Cinematic' },
+                  { id: 'glow', label: 'Glow' }
+                ].map((shadow) => (
+                  <button
+                    key={shadow.id}
+                    type="button"
+                    onClick={() =>
+                      setStyleConfig((prev) => ({
+                        ...prev,
+                        text_shadow_mode: shadow.id as any
+                      }))
+                    }
+                    className={`py-1.5 px-1 rounded-lg border text-center font-medium transition truncate ${
+                      (styleConfig.text_shadow_mode || 'none') === shadow.id
+                        ? 'bg-brand-500/20 text-brand-300 border-brand-500/50 shadow-sm'
+                        : 'bg-dark-800 text-gray-400 border-gray-700 hover:text-gray-200'
+                    }`}
+                  >
+                    {shadow.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* TMDb Show Logo Badge */}
+            <div className="pt-2 border-t border-gray-800/60 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="text-[11px] font-semibold text-gray-300">
+                    Show Logo Watermark / Badge
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setStyleConfig((prev) => ({
+                      ...prev,
+                      show_logo: prev.show_logo ? 0 : 1
+                    }))
+                  }
+                  className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors duration-200 ${
+                    styleConfig.show_logo ? 'bg-brand-500 justify-end' : 'bg-dark-800 border border-gray-700 justify-start'
+                  }`}
+                >
+                  <div className="w-4 h-4 rounded-full bg-white shadow-md" />
+                </button>
+              </div>
+
+              {Boolean(styleConfig.show_logo) && (
+                <div className="bg-dark-950/60 border border-gray-800 rounded-lg p-2.5 flex flex-col gap-2.5 mt-1">
+                  {/* Position */}
+                  <div>
+                    <label className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">
+                      Badge Corner Position
+                    </label>
+                    <div className="grid grid-cols-4 gap-1 text-[10px]">
+                      {[
+                        { id: 'top_right', label: 'Top Right' },
+                        { id: 'top_left', label: 'Top Left' },
+                        { id: 'bottom_right', label: 'Bottom Right' },
+                        { id: 'bottom_left', label: 'Bottom Left' }
+                      ].map((pos) => (
+                        <button
+                          key={pos.id}
+                          type="button"
+                          onClick={() =>
+                            setStyleConfig((prev) => ({
+                              ...prev,
+                              logo_position: pos.id as any
+                            }))
+                          }
+                          className={`py-1 rounded border text-center font-medium transition truncate ${
+                            (styleConfig.logo_position || 'top_right') === pos.id
+                              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                              : 'bg-dark-800 text-gray-400 border-gray-700 hover:text-gray-200'
+                          }`}
+                        >
+                          {pos.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Opacity */}
+                  <div>
+                    <div className="flex justify-between text-[10px] text-gray-400 mb-1">
+                      <span>Logo Opacity</span>
+                      <span className="font-mono">{styleConfig.logo_opacity_pct !== undefined ? styleConfig.logo_opacity_pct : 90}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="20"
+                      max="100"
+                      value={styleConfig.logo_opacity_pct !== undefined ? styleConfig.logo_opacity_pct : 90}
+                      onChange={(e) =>
+                        setStyleConfig((prev) => ({
+                          ...prev,
+                          logo_opacity_pct: Number(e.target.value)
+                        }))
+                      }
+                      className="w-full accent-cyan-400 bg-dark-800"
+                    />
+                  </div>
+
+                  {/* Monochrome White Option */}
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-gray-300">
+                      Monochrome White Tint
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStyleConfig((prev) => ({
+                          ...prev,
+                          logo_monochrome: prev.logo_monochrome ? 0 : 1
+                        }))
+                      }
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
+                        styleConfig.logo_monochrome
+                          ? 'bg-white text-dark-950 border-white'
+                          : 'bg-dark-800 text-gray-400 border-gray-700 hover:text-gray-200'
+                      }`}
+                    >
+                      {styleConfig.logo_monochrome ? 'WHITE ONLY' : 'ORIGINAL COLOR'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <button
