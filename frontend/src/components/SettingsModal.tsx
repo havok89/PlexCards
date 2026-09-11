@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useToast } from '../context/ToastContext';
+import { DefaultStyleModal } from './DefaultStyleModal';
 import {
   Settings,
   X,
@@ -13,7 +14,10 @@ import {
   Loader2,
   AlertTriangle,
   Star,
-  Plus
+  Plus,
+  Sliders,
+  Film,
+  Palette
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -35,12 +39,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const { showToast } = useToast();
   const [autoGemini, setAutoGemini] = useState<boolean>(true);
+  const [autoSmartPick, setAutoSmartPick] = useState<boolean>(true);
   const [defaultMode, setDefaultMode] = useState<string>('ignored');
   const [preferredCreators, setPreferredCreators] = useState<string>('');
   const [newCreatorInput, setNewCreatorInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isBulking, setIsBulking] = useState<boolean>(false);
+  const [isDefaultStyleModalOpen, setIsDefaultStyleModalOpen] = useState<boolean>(false);
+  const [defaultStyleSummary, setDefaultStyleSummary] = useState<string>('Oswald • 108px');
+
+  const refreshDefaultStyleSummary = () => {
+    api.getDefaultStyle()
+      .then((res) => {
+        if (res.style) {
+          const pos = (res.style.text_position || 'left_center').replace('_', ' ');
+          setDefaultStyleSummary(`${res.style.font_family || 'Oswald'} • ${res.style.title_font_size || 108}px • ${pos}`);
+        }
+      })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -49,6 +67,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (!mounted) return;
         const s = data.settings || {};
         setAutoGemini(s.auto_gemini_suggestion !== 'false');
+        setAutoSmartPick(s.auto_smart_pick_stills !== 'false');
         setDefaultMode(s.default_new_show_mode || 'ignored');
         setPreferredCreators(s.preferred_mediux_creators || '');
       })
@@ -56,6 +75,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       .finally(() => {
         if (mounted) setIsLoading(false);
       });
+
+    refreshDefaultStyleSummary();
+
     return () => {
       mounted = false;
     };
@@ -230,6 +252,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               )}
 
+              {/* Section: Smart Auto-Pick Stills */}
+              <div className="bg-dark-850 border border-gray-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Film className="w-4 h-4 text-purple-400" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-purple-300">
+                      Smart Auto-Pick Stills
+                    </h3>
+                  </div>
+                  <span className="text-[10px] text-gray-500">TMDb Quality Scored</span>
+                </div>
+
+                <div className="flex items-start justify-between gap-4 pt-1">
+                  <div>
+                    <span className="text-xs font-semibold text-white block">
+                      Auto-select highest community-rated 16:9 frame
+                    </span>
+                    <p className="text-[11px] text-gray-400 leading-relaxed mt-0.5">
+                      When generating cards, automatically evaluate all available candidate stills by community rating and native 16:9 aspect ratio to select the optimal frame instead of TMDb's first upload.
+                    </p>
+                  </div>
+
+                  {/* Toggle Switch */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !autoSmartPick;
+                      setAutoSmartPick(next);
+                      handleSaveSetting('auto_smart_pick_stills', next ? 'true' : 'false');
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      autoSmartPick ? 'bg-purple-600' : 'bg-gray-700'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        autoSmartPick ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
               {/* Section 2: Default Mode for New Shows */}
               <div className="bg-dark-850 border border-gray-800 rounded-xl p-4 space-y-3">
                 <div>
@@ -268,6 +333,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Section: Default Title Card Style */}
+              <div className="bg-dark-850 border border-gray-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-brand-400" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-brand-300">
+                      Default Title Card Style
+                    </h3>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-500/15 text-brand-400 border border-brand-500/30 font-medium">
+                    Universal Template
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  Configure the default typography, sizing, layout, colors, and effects automatically seeded into newly scanned shows:
+                </p>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-dark-900 border border-gray-800 rounded-lg p-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-brand-500/15 border border-brand-500/30 flex items-center justify-center text-brand-400 shrink-0">
+                      <Palette className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-white">Active Default Template</div>
+                      <div className="text-[11px] text-gray-400 font-mono capitalize mt-0.5">{defaultStyleSummary}</div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsDefaultStyleModalOpen(true)}
+                    className="px-3 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-dark-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm shrink-0"
+                  >
+                    <Sliders className="w-3.5 h-3.5" />
+                    <span>Customize Default Style</span>
+                  </button>
                 </div>
               </div>
 
@@ -417,6 +522,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Default Generator Style Customizer Modal */}
+      {isDefaultStyleModalOpen && (
+        <DefaultStyleModal
+          onClose={() => setIsDefaultStyleModalOpen(false)}
+          onSaved={() => {
+            refreshDefaultStyleSummary();
+          }}
+        />
+      )}
     </div>
   );
 };

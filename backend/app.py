@@ -366,11 +366,14 @@ def get_show_details(rating_key: str):
         try:
             logger.info(f"✨ Generating initial AI style suggestion for '{show['title']}'...")
             poster_path = POSTERS_DIR / f"{rating_key}.jpg"
+            first_ep = episodes[0] if episodes else {"season_number": 1, "episode_number": 1, "title": ""}
+            still_path = sync_mgr.get_episode_backdrop_still(show, first_ep)
             ai_style = ai_styler.suggest_style(
                 show_title=show["title"],
                 genres=tmdb_info.get("genres", []),
                 overview=tmdb_info.get("overview", ""),
-                poster_path=poster_path if poster_path.exists() else None
+                poster_path=poster_path if poster_path.exists() else None,
+                still_path=still_path if (still_path and still_path.exists()) else None
             )
             if ai_style.get("error"):
                 ai_error = ai_style["error"]
@@ -406,6 +409,44 @@ def update_settings(payload: dict = Body(...)):
     for k, v in payload.items():
         set_setting(k, str(v))
     return {"status": "success", "settings": get_all_settings()}
+
+@app.get("/api/settings/default-style")
+def get_default_style_endpoint():
+    """Get the current default title card generator style and a sample show for live preview."""
+    from backend.db import get_default_generator_style, get_db
+    style = get_default_generator_style()
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT rating_key, title, year, tmdb_id, backdrop_url FROM shows ORDER BY title ASC LIMIT 1")
+    row = cursor.fetchone()
+    sample_show = None
+    sample_episode = None
+    if row:
+        sample_show = dict(row)
+        cursor.execute(
+            "SELECT season_number, episode_number, title FROM episodes WHERE show_rating_key = ? ORDER BY season_number ASC, episode_number ASC LIMIT 1",
+            (sample_show["rating_key"],)
+        )
+        ep_row = cursor.fetchone()
+        if ep_row:
+            sample_episode = dict(ep_row)
+        else:
+            sample_episode = {"season_number": 1, "episode_number": 1, "title": "Pilot"}
+    conn.close()
+
+    return {
+        "style": style,
+        "sample_show": sample_show,
+        "sample_episode": sample_episode
+    }
+
+@app.post("/api/settings/default-style")
+def set_default_style_endpoint(payload: dict = Body(...)):
+    """Save the user-configured default generator style."""
+    from backend.db import set_default_generator_style
+    saved = set_default_generator_style(payload)
+    return {"status": "success", "style": saved}
 
 @app.post("/api/shows/bulk-mode")
 def bulk_set_show_mode(payload: dict = Body(...)):
@@ -509,7 +550,14 @@ def generate_preview(rating_key: str, payload: dict = Body(...)):
 
     show = get_show(rating_key)
     if not show:
-        raise HTTPException(status_code=404, detail="Show not found")
+        if rating_key == "default":
+            show = {
+                "rating_key": "default",
+                "title": "Sample Show",
+                "tmdb_id": None
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Show not found")
 
     tmdb_id = show.get("tmdb_id")
     season_num = payload.get("season_number", 1)

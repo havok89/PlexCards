@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from typing import Dict, List, Optional, Any
 from backend.config import DB_PATH
@@ -162,13 +163,59 @@ def init_db():
     default_settings = {
         "auto_gemini_suggestion": "true",
         "default_new_show_mode": "ignored",
-        "preferred_mediux_creators": ""
+        "preferred_mediux_creators": "",
+        "auto_smart_pick_stills": "true"
     }
     for k, v in default_settings.items():
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
     conn.commit()
     conn.close()
+
+SYSTEM_DEFAULT_STYLE = {
+    "layout": "standard",
+    "text_position": "left_center",
+    "font_family": "Oswald",
+    "subheading_font_family": None,
+    "font_color": "#FFFFFF",
+    "subheading_color": "#A3A3A3",
+    "gradient_side": "left",
+    "gradient_width_pct": 48,
+    "gradient_opacity_pct": 88,
+    "show_subheading": 1,
+    "subheading_format": "s_pad_ep_num",
+    "subheading_icon": "dot",
+    "title_font_size": 108,
+    "subheading_font_size": 52,
+    "text_box_width_pct": 46,
+    "subheading_gap": 16,
+    "subheading_casing": "upper",
+    "subheading_position": "above",
+    "subheading_tracking": 0,
+    "frosted_blur_pct": 0,
+    "film_grain_pct": 0,
+    "vignette_pct": 0,
+    "text_shadow_mode": "subtle",
+    "show_logo": 0,
+    "logo_position": "top_right",
+    "logo_opacity_pct": 80,
+    "logo_monochrome": 1
+}
+
+def get_default_generator_style() -> Dict[str, Any]:
+    raw = get_setting("default_generator_style", "")
+    if raw:
+        try:
+            custom = json.loads(raw)
+            return {**SYSTEM_DEFAULT_STYLE, **custom}
+        except Exception:
+            pass
+    return dict(SYSTEM_DEFAULT_STYLE)
+
+def set_default_generator_style(style_dict: Dict[str, Any]) -> Dict[str, Any]:
+    merged = {**SYSTEM_DEFAULT_STYLE, **style_dict}
+    set_setting("default_generator_style", json.dumps(merged))
+    return merged
 
 def get_setting(key: str, default: str = "") -> str:
     conn = get_db()
@@ -239,10 +286,57 @@ def upsert_show(show_data: Dict[str, Any]):
         "status": show_data.get("status")
     })
     
-    # Ensure default style exists
+    # Ensure default style exists (use user-configured default generator style)
+    def_style = get_default_generator_style()
     cursor.execute("""
-    INSERT OR IGNORE INTO show_styles (rating_key) VALUES (:rating_key)
-    """, {"rating_key": str(show_data["rating_key"])})
+    INSERT INTO show_styles (
+        rating_key, layout, text_position, font_family, subheading_font_family,
+        font_color, subheading_color, gradient_side, gradient_width_pct, gradient_opacity_pct,
+        show_subheading, subheading_format, subheading_icon,
+        title_font_size, subheading_font_size, text_box_width_pct, subheading_gap,
+        subheading_casing, subheading_position, subheading_tracking,
+        frosted_blur_pct, film_grain_pct, vignette_pct, text_shadow_mode,
+        show_logo, logo_position, logo_opacity_pct, logo_monochrome, has_custom_style
+    ) VALUES (
+        :rating_key, :layout, :text_position, :font_family, :subheading_font_family,
+        :font_color, :subheading_color, :gradient_side, :gradient_width_pct, :gradient_opacity_pct,
+        :show_subheading, :subheading_format, :subheading_icon,
+        :title_font_size, :subheading_font_size, :text_box_width_pct, :subheading_gap,
+        :subheading_casing, :subheading_position, :subheading_tracking,
+        :frosted_blur_pct, :film_grain_pct, :vignette_pct, :text_shadow_mode,
+        :show_logo, :logo_position, :logo_opacity_pct, :logo_monochrome, 0
+    )
+    ON CONFLICT(rating_key) DO NOTHING
+    """, {
+        "rating_key": str(show_data["rating_key"]),
+        "layout": def_style.get("layout", "standard"),
+        "text_position": def_style.get("text_position", "left_center"),
+        "font_family": def_style.get("font_family", "Oswald"),
+        "subheading_font_family": def_style.get("subheading_font_family") or None,
+        "font_color": def_style.get("font_color", "#FFFFFF"),
+        "subheading_color": def_style.get("subheading_color", "#A3A3A3"),
+        "gradient_side": def_style.get("gradient_side", "left"),
+        "gradient_width_pct": def_style.get("gradient_width_pct", 48),
+        "gradient_opacity_pct": def_style.get("gradient_opacity_pct", 88),
+        "show_subheading": def_style.get("show_subheading", 1),
+        "subheading_format": def_style.get("subheading_format", "s_pad_ep_num"),
+        "subheading_icon": def_style.get("subheading_icon", "dot"),
+        "title_font_size": def_style.get("title_font_size", 108),
+        "subheading_font_size": def_style.get("subheading_font_size", 52),
+        "text_box_width_pct": def_style.get("text_box_width_pct", 46),
+        "subheading_gap": def_style.get("subheading_gap", 16),
+        "subheading_casing": def_style.get("subheading_casing", "upper"),
+        "subheading_position": def_style.get("subheading_position", "above"),
+        "subheading_tracking": def_style.get("subheading_tracking", 0),
+        "frosted_blur_pct": def_style.get("frosted_blur_pct", 0),
+        "film_grain_pct": def_style.get("film_grain_pct", 0),
+        "vignette_pct": def_style.get("vignette_pct", 0),
+        "text_shadow_mode": def_style.get("text_shadow_mode", "subtle"),
+        "show_logo": def_style.get("show_logo", 0),
+        "logo_position": def_style.get("logo_position", "top_right"),
+        "logo_opacity_pct": def_style.get("logo_opacity_pct", 80),
+        "logo_monochrome": def_style.get("logo_monochrome", 1)
+    })
     
     conn.commit()
     conn.close()

@@ -182,6 +182,30 @@ export const api = {
     return res.json();
   },
 
+  async getDefaultStyle(): Promise<{
+    style: StyleConfig;
+    sample_show: Show | null;
+    sample_episode?: { season_number: number; episode_number: number; title: string } | null;
+  }> {
+    const res = await fetch('/api/settings/default-style');
+    if (!res.ok) {
+      throw new Error(`Failed to load default style: status ${res.status}`);
+    }
+    return res.json();
+  },
+
+  async saveDefaultStyle(style: StyleConfig): Promise<{ status: string; style: StyleConfig }> {
+    const res = await fetch('/api/settings/default-style', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(style)
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to save default style: status ${res.status}`);
+    }
+    return res.json();
+  },
+
   async bulkSetMode(mode: string): Promise<{ status: string; updated_count: number; mode: string }> {
     const res = await fetch('/api/shows/bulk-mode', {
       method: 'POST',

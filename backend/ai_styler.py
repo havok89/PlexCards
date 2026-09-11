@@ -80,12 +80,21 @@ class AIStyler:
         has_poster = poster_img is not None
         poster_instructions = """
 An official promotional poster for this show is ATTACHED. Visually inspect the poster image closely:
-1. POSTER LOGO & TYPOGRAPHY MATCHING:
-   - Identify the typography style of the show title on the poster (e.g. stencil serif, bold condensed grotesque, techno geometric, retro 80s brush, hand-drawn comic, modern slab).
-   - "font_family": Select the closest open-source Google Font equivalent for the main episode title that captures the exact spirit and letterforms of the poster logo.
-   - "subheading_font_family": Select a complementary open-source Google Font for the subtitle (Season/Episode header). In professional title card design, font pairing is critical:
-     * If "font_family" is an expressive or ornate display font (e.g. Cinzel, Bangers, Righteous, Teko, Playfair Display), pair it with a clean, solid grotesque or condensed sans-serif (such as Inter, Barlow Condensed, Rubik, Oswald, Outfit, Space Grotesk).
-     * If "font_family" is already a clean modern sans-serif (e.g. Inter, Oswald), you may use the same font or a subtle companion.
+1. POSTER LOGO & TYPOGRAPHY MATCHING (WEIGHT & PRESENCE PARITY):
+   - CRITICAL FONT WEIGHT ASSESSMENT: Inspect the stroke weight, thickness, and muscularity of the show title / logo on the poster:
+     * CHUNKY / HEAVY / EXTRA-BOLD / BLACK LOGO (e.g. thick block letters, heavy condensed sans, massive slab, chunky grunge, bold impact):
+       -> "font_family" (Main Episode Title) MUST ALSO BE A CHUNKY, HEAVY-WEIGHT GOOGLE FONT to match the logo's weight and bold identity!
+       -> NEVER assign a slim, regular, or light font (like regular Inter, Roboto, Open Sans, Raleway) to the episode title when the logo is chunky.
+       -> Use the slimmer, clean grotesque font for "subheading_font_family" (the subtitle / season & episode header) instead! This produces the optimal streaming typographic hierarchy: a commanding, chunky episode title anchored by a clean, refined subtitle.
+       -> Recommended Chunky Google Fonts for heavy logos:
+          • Chunky Condensed / Grotesque: Anton, Bebas Neue, Oswald, Barlow Condensed, Teko, Archivo Black, Fjalla One, Staatliches, Kanit, Big Shoulders Display
+          • Chunky Slab / Block: Alfa Slab One, Rubik, Paytone One, Black Han Sans, Titan One, Syne, Ultra
+          • Chunky Display / Comic / Retro: Righteous, Bangers, Cinzel Decorative, Russo One, Passion One
+     * MEDIUM / GEOMETRIC / ELEGANT LOGO (e.g. sleek neo-grotesque, refined serif, geometric sans):
+       -> Match with an appropriate medium/semi-bold Google Font (e.g. Inter, Outfit, Space Grotesk, Playfair Display, Cinzel, Syne).
+   - "subheading_font_family": Select a complementary open-source Google Font for the subtitle (Season/Episode header). In professional title card design:
+     * When "font_family" is bold, chunky, or ornate, pair it with a clean, solid, slightly slimmer grotesque or condensed sans-serif (such as Inter, Barlow Condensed, Rubik, Oswald, Outfit, Space Grotesk).
+     * If you identify a slim font that you like, it belongs in "subheading_font_family" as the subtitle, paired with a chunky equivalent for "font_family".
 
 2. COMPOSITION-AWARE TEXT POSITIONING:
    - Analyze the visual balance and focal points of the poster art (where main characters, faces, silhouettes, or horizon lines sit).
@@ -179,6 +188,10 @@ User Style Direction: {user_prompt or 'Match the authentic tone, genre, and aest
 
 4. STRICTLY PROHIBITED FONTS:
    - NEVER choose or suggest "Montserrat" under any circumstances for either title or subtitle. It renders far too thin and frail for TV displays. Prefer solid, punchy grotesque or condensed options like Inter, Barlow Condensed, Rubik, Oswald, Outfit, or matching the title font.
+
+5. FONT WEIGHT & CHUNKY LOGO RULE:
+   - When the poster or show logo features a chunky, heavy, or bold font, "font_family" (Episode Title) MUST BE CHUNKY AND HEAVY to match.
+   - Do not invert this hierarchy: a slim, clean grotesque font belongs in "subheading_font_family" (the subtitle), paired with a bold, chunky display font for the episode title.
 
 Return ONLY a JSON object with these exact keys:
 - "font_family": Name of the selected open-source Google Font for the title.

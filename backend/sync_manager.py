@@ -36,8 +36,17 @@ class SyncManager:
         # 1. Official TMDb episode still (or user custom selected candidate still)
         if tmdb_id and s_num is not None and e_num is not None:
             try:
-                from backend.db import get_episode_still_override
-                override_path = get_episode_still_override(show.get("rating_key", ""), s_num, e_num)
+                from backend.db import get_episode_still_override, get_setting, set_episode_still_override
+                rk = str(show.get("rating_key", ""))
+                override_path = get_episode_still_override(rk, s_num, e_num)
+                if not override_path and rk:
+                    auto_smart_pick = get_setting("auto_smart_pick_stills", "true").lower() == "true"
+                    if auto_smart_pick:
+                        candidate_stills = self.tmdb.get_episode_stills_list(tmdb_id, s_num, e_num)
+                        if candidate_stills:
+                            best_still = candidate_stills[0]["file_path"]
+                            override_path = best_still
+                            set_episode_still_override(rk, s_num, e_num, best_still)
                 still_file = self.tmdb.get_episode_still(tmdb_id, s_num, e_num, specific_still_path=override_path)
                 if still_file and still_file.exists():
                     return still_file

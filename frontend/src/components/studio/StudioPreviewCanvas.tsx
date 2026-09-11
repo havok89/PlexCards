@@ -641,7 +641,7 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
               No alternate stills available from TMDb for this episode.
             </div>
           ) : (
-            <div className="flex items-center gap-2.5 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin scrollbar-thumb-gray-800">
+            <div className="flex items-center gap-2.5 overflow-x-auto -mx-1.5 px-1.5 py-2 scrollbar-thin scrollbar-thumb-gray-800">
               {candidateStills.map((still) => {
                 const isSelected = selectedStillPath
                   ? still.file_path === selectedStillPath
@@ -654,8 +654,8 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
                     onClick={() => handleSelectStill(still)}
                     className={`group relative shrink-0 w-28 sm:w-32 aspect-video rounded-lg overflow-hidden border transition-all text-left ${
                       isSelected
-                        ? 'border-brand-500 ring-2 ring-brand-500/50 shadow-md scale-[1.02]'
-                        : 'border-gray-800 hover:border-gray-600 opacity-75 hover:opacity-100'
+                        ? 'border-brand-500 ring-2 ring-brand-500/50 shadow-md scale-[1.02] z-10'
+                        : 'border-gray-800 hover:border-gray-600 opacity-75 hover:opacity-100 z-0'
                     }`}
                     title={`Click to select this frame (${still.width}x${still.height}, rating: ${still.vote_average})`}
                   >
