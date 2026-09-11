@@ -29,7 +29,7 @@ from backend.auth import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="PlexCards", version="1.0.0")
+app = FastAPI(title="PlexCards", version="0.8.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -88,6 +88,7 @@ def get_config_info():
     """Return app settings including TEST_MODE, listener status, and auth flag."""
     from backend.config import TEST_MODE, PLEX_TV_LIBRARY, POLL_INTERVAL_HOURS
     return {
+        "version": "0.8.0",
         "test_mode": TEST_MODE,
         "tv_library": PLEX_TV_LIBRARY,
         "poll_interval_hours": POLL_INTERVAL_HOURS,

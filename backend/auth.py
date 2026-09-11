@@ -78,7 +78,7 @@ class PlexOAuth:
     def get_headers(cls) -> Dict[str, str]:
         return {
             "X-Plex-Product": "PlexCards",
-            "X-Plex-Version": "1.0.0",
+            "X-Plex-Version": "0.8.0",
             "X-Plex-Client-Identifier": get_client_id(),
             "Accept": "application/json"
         }

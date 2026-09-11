@@ -105,7 +105,7 @@
   <section class="pt-12 pb-14 sm:pt-16 sm:pb-18 max-w-5xl mx-auto px-4 sm:px-6 text-center">
     <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-dark-850 text-xs font-mono text-gray-400 border border-gray-800 mb-6">
       <span class="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
-      <span>v1.2: TheTVDB v4, MediUX Bridge & Single-Card Studio Update</span>
+      <span>v0.8: TheTVDB v4, MediUX Bridge & Title Card Studio</span>
     </div>
 
     <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight text-white max-w-3xl mx-auto leading-tight">
@@ -606,15 +606,20 @@ PORT=8080</code></pre>
       - TEST_MODE=true
     volumes:
       - ./data:/app/data
-      - ./cache:/app/cache</code></pre>
+      - ./cache:/app/cache
+      - ./custom_fonts:/app/custom_fonts</code></pre>
       </div>
 
-      <div class="flex items-center gap-3 text-xs text-gray-400">
+      <div class="flex flex-wrap items-center gap-3 text-xs text-gray-400 mb-2">
         <span>Run:</span>
         <code class="bg-dark-850 px-2 py-1 rounded border border-gray-800 text-gray-200">docker compose up -d</code>
         <span>and open</span>
         <code class="bg-dark-850 px-2 py-1 rounded border border-gray-800 text-brand-400">http://localhost:8080</code>
       </div>
+
+      <p class="text-xs text-gray-500 mt-2">
+        Pre-built multi-arch (<code class="text-gray-400">amd64</code> / <code class="text-gray-400">arm64</code>) images are published to GHCR with each official GitHub release. You can use <code class="text-gray-400 font-mono">:latest</code> or pin to a release version tag (e.g. <code class="text-gray-400 font-mono">:v0.8.0</code>).
+      </p>
     </div>
   </section>
 

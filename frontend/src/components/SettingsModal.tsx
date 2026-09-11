@@ -174,7 +174,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <Settings className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">Application Settings</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-white">Application Settings</h2>
+                <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-dark-800 border border-gray-700 text-gray-400">
+                  v0.8
+                </span>
+              </div>
               <p className="text-xs text-gray-400">Manage automation, Gemini AI styling, and defaults</p>
             </div>
           </div>
@@ -592,7 +597,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 border-t border-gray-800 flex items-center justify-end bg-dark-850">
+        <div className="px-6 py-3 border-t border-gray-800 flex items-center justify-between bg-dark-850">
+          <div className="text-[11px] text-gray-500 font-mono">
+            PlexCards <span className="text-gray-400">v0.8.0</span>
+          </div>
           <button
             type="button"
             onClick={onClose}
