@@ -93,10 +93,10 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     show_subheading: show.show_subheading !== undefined ? show.show_subheading : 1,
     subheading_format: show.subheading_format || 'season_num_ep_num',
     subheading_icon: normalizeSeparator(show.subheading_icon),
-    title_font_size: show.title_font_size || 82,
-    subheading_font_size: show.subheading_font_size || 34,
-    text_box_width_pct: show.text_box_width_pct || 42,
-    subheading_gap: show.subheading_gap !== undefined ? show.subheading_gap : 12,
+    title_font_size: show.title_font_size || 108,
+    subheading_font_size: show.subheading_font_size || 52,
+    text_box_width_pct: show.text_box_width_pct || 46,
+    subheading_gap: show.subheading_gap !== undefined ? show.subheading_gap : 16,
     subheading_casing: show.subheading_casing || 'upper',
     subheading_position: show.subheading_position || 'above',
     subheading_tracking: show.subheading_tracking !== undefined ? show.subheading_tracking : 0
@@ -153,10 +153,10 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           show_subheading: data.show.show_subheading !== undefined ? data.show.show_subheading : 1,
           subheading_format: data.show.subheading_format || 'season_num_ep_num',
           subheading_icon: normalizeSeparator(data.show.subheading_icon),
-          title_font_size: data.show.title_font_size || 82,
-          subheading_font_size: data.show.subheading_font_size || 34,
-          text_box_width_pct: data.show.text_box_width_pct || 42,
-          subheading_gap: data.show.subheading_gap !== undefined ? data.show.subheading_gap : 12,
+          title_font_size: data.show.title_font_size || 108,
+          subheading_font_size: data.show.subheading_font_size || 52,
+          text_box_width_pct: data.show.text_box_width_pct || 46,
+          subheading_gap: data.show.subheading_gap !== undefined ? data.show.subheading_gap : 16,
           subheading_casing: data.show.subheading_casing || 'upper',
           subheading_position: data.show.subheading_position || 'above',
           subheading_tracking: data.show.subheading_tracking !== undefined ? data.show.subheading_tracking : 0
@@ -181,8 +181,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     const ep = episodes[selectedEpIndex];
     if (!ep) return;
 
-    // Check frontend in-memory cache first for instantaneous rendering
-    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.subheading_font_family || ''}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.show_subheading}_${styleConfig.subheading_format}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}_${styleConfig.title_font_size}_${styleConfig.subheading_font_size}_${styleConfig.text_box_width_pct || 42}_${styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 12}_${styleConfig.subheading_casing || 'upper'}_${styleConfig.subheading_position || 'above'}_${styleConfig.subheading_tracking || 0}`;
+    const cacheKey = `${activeShow.rating_key}_s${ep.season_number}e${ep.episode_number}_${styleConfig.text_position}_${styleConfig.font_family}_${styleConfig.subheading_font_family || ''}_${styleConfig.font_color}_${styleConfig.subheading_color}_${styleConfig.show_subheading}_${styleConfig.subheading_format}_${styleConfig.subheading_icon}_${styleConfig.gradient_width_pct}_${styleConfig.gradient_opacity_pct}_${styleConfig.title_font_size}_${styleConfig.subheading_font_size}_${styleConfig.text_box_width_pct || 46}_${styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 16}_${styleConfig.subheading_casing || 'upper'}_${styleConfig.subheading_position || 'above'}_${styleConfig.subheading_tracking || 0}`;
     if (previewBlobCache.has(cacheKey)) {
       setPreviewUrl(previewBlobCache.get(cacheKey)!);
       setIsPreviewLoading(false);
@@ -396,8 +395,8 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         subheading_icon: '•',
         gradient_side: 'bottom',
         gradient_width_pct: 50,
-        title_font_size: 90,
-        subheading_font_size: 34
+        title_font_size: 115,
+        subheading_font_size: 54
       }));
     } else if (preset === 'clean_bottom') {
       setStyleConfig((prev) => ({
@@ -408,10 +407,10 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         subheading_color: '#A3A3A3',
         subheading_icon: '-',
         gradient_side: 'bottom',
-        gradient_width_pct: 45,
-        title_font_size: 82,
-        subheading_font_size: 32,
-        text_box_width_pct: 50
+        gradient_width_pct: 48,
+        title_font_size: 106,
+        subheading_font_size: 50,
+        text_box_width_pct: 55
       }));
     }
   };
@@ -434,8 +433,8 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           gradient_side: suggestion.gradient_side || prev.gradient_side,
           gradient_width_pct: suggestion.gradient_width_pct || prev.gradient_width_pct,
           gradient_opacity_pct: suggestion.gradient_opacity_pct || prev.gradient_opacity_pct,
-          title_font_size: suggestion.title_font_size || prev.title_font_size || 82,
-          subheading_font_size: suggestion.subheading_font_size || prev.subheading_font_size || 34,
+          title_font_size: suggestion.title_font_size || prev.title_font_size || 108,
+          subheading_font_size: suggestion.subheading_font_size || prev.subheading_font_size || 52,
           subheading_position: suggestion.subheading_position || prev.subheading_position,
           subheading_casing: suggestion.subheading_casing || prev.subheading_casing,
           subheading_tracking: suggestion.subheading_tracking !== undefined ? suggestion.subheading_tracking : prev.subheading_tracking,
@@ -455,7 +454,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
       const layoutSummary = `• Layout: ${posFormatted.charAt(0).toUpperCase() + posFormatted.slice(1)}${subPos}`;
 
       const colorSummary = `• Colors: ${suggestion.font_color || '#FFFFFF'} (Title) / ${suggestion.subheading_color || '#A3A3A3'} (Sub)`;
-      const sizeSummary = `• Sizes: ${suggestion.title_font_size || 82}px Title / ${suggestion.subheading_font_size || 34}px Sub`;
+      const sizeSummary = `• Sizes: ${suggestion.title_font_size || 108}px Title / ${suggestion.subheading_font_size || 52}px Sub`;
 
       const casingLabel = suggestion.subheading_casing === 'upper' ? 'UPPER' : suggestion.subheading_casing === 'title' ? 'Title Case' : 'lower';
       const trackingLabel = suggestion.subheading_tracking ? `+${suggestion.subheading_tracking}px tracking` : 'no tracking';

@@ -37,15 +37,15 @@ class AIStyler:
                 "gradient_width_pct": 48,
                 "gradient_opacity_pct": 90,
                 "subheading_icon": "•",
-                "title_font_size": 82,
-                "subheading_font_size": 34,
+                "title_font_size": 108,
+                "subheading_font_size": 44,
                 "text_position": "left_center",
                 "subheading_position": "above",
                 "subheading_casing": "upper",
                 "subheading_tracking": 0,
                 "subheading_format": "s_pad_ep_num",
-                "subheading_gap": 12,
-                "text_box_width_pct": 42,
+                "subheading_gap": 14,
+                "text_box_width_pct": 46,
                 "reasoning": "Default styling applied (Gemini key not configured)."
             }
 
@@ -79,9 +79,9 @@ An official promotional poster for this show is ATTACHED. Visually inspect the p
      * If "text_position" is "right_center", use "gradient_side": "right".
 
 3. PROPORTIONAL FONT SIZING & TEXT WRAP:
-   - "title_font_size": Integer between 65 and 105 (default 82). Bold condensed fonts shine at 88-100; ornate serifs are best around 72-84.
-   - "subheading_font_size": Integer between 26 and 42 (default 34). Proportional companion size to title_font_size.
-   - "text_box_width_pct": Integer between 35 and 55 (default 42). Maximum width for multi-line titles before wrapping.
+   - "title_font_size": Integer between 90 and 130 (default 108). Title cards are displayed scaled down (e.g. 5 in a row across TV screens). Bold condensed fonts shine at 110-125; ornate serifs are best around 96-112.
+   - "subheading_font_size": Integer between 42 and 62 (default 52). Proportional companion size to title_font_size for effortless readability on TV displays.
+   - "text_box_width_pct": Integer between 40 and 55 (default 46). Maximum width for multi-line titles before wrapping.
 
 4. BRANDING COLOR PALETTE:
    - Sample eye-catching, high-contrast branding colors directly from the poster artwork (e.g. iconic neon accents, costume hues, glowing magic, warm gold, or toxic green).
@@ -94,13 +94,13 @@ An official promotional poster for this show is ATTACHED. Visually inspect the p
    - "subheading_tracking": Integer between 0 and 6 (letter-spacing in px). Wide tracking (3-6px) looks ultra-premium and cinematic for sans-serif subtitles; 0-2px for tight serifs.
    - "subheading_format": One of ["s_pad_ep_num", "season_num_ep_num", "s_pad_e_pad", "season_word_ep_word", "compact_pad"].
    - "subheading_icon": Separator character between season and episode text (e.g. "•", "-", ":", "/", or "" for none).
-   - "subheading_gap": Integer between 8 and 24 (distance in px between title and subtitle).
+   - "subheading_gap": Integer between 12 and 30 (default 16, distance in px between title and subtitle).
 """ if has_poster else """
 Analyze the show's genres and synopsis to select optimal typography, font pairing, colors, and layout:
 1. "font_family": High-quality open-source Google Font tailored to the show's aesthetic.
 2. "subheading_font_family": Clean, complementary Google Font (e.g. Inter, Barlow Condensed, Rubik, or matching).
-3. "title_font_size": Integer between 65 and 105 (default 82).
-4. "subheading_font_size": Integer between 26 and 42 (default 34).
+3. "title_font_size": Integer between 90 and 130 (default 108).
+4. "subheading_font_size": Integer between 42 and 62 (default 52).
 5. "text_position": One of ["left_center", "left_bottom", "center_bottom", "right_center", "right_bottom", "top_left", "center"].
 6. "gradient_side": Must match text_position ("left", "bottom", "right", "top").
 7. "font_color" & "subheading_color": High-luminance hex colors.
@@ -109,8 +109,8 @@ Analyze the show's genres and synopsis to select optimal typography, font pairin
 10. "subheading_tracking": Integer between 0 and 6.
 11. "subheading_format": "s_pad_ep_num", "season_num_ep_num", "s_pad_e_pad", "season_word_ep_word", or "compact_pad".
 12. "subheading_icon": "•", "-", ":", "/", or "".
-13. "subheading_gap": Integer between 8 and 24.
-14. "text_box_width_pct": Integer between 35 and 55.
+13. "subheading_gap": Integer between 12 and 30 (default 16).
+14. "text_box_width_pct": Integer between 40 and 55 (default 46).
 """
 
         prompt = f"""
@@ -127,9 +127,9 @@ User Style Direction: {user_prompt or 'Match the authentic tone, genre, and aest
 
 --- CRITICAL DESIGN & READABILITY RULES ---
 1. READABILITY IS PARAMOUNT:
-   - Title cards are viewed from across the room on television screens, home theater projectors, and mobile displays.
-   - Text must be immediately legible and readable at a glance over photographic episode background images.
-   - Never choose illegible script or spindly decorative fonts.
+   - Title cards are viewed from across the room on television screens (often displayed 5 thumbnails across a row).
+   - Text must be large, bold, and commanding so it is effortlessly readable at a glance over photographic episode background images.
+   - Never choose tiny, spindly decorative fonts or small sizes. Maintain generous sizing (title_font_size 95-130, subheading_font_size 38-52).
 
 2. GRADIENT USAGE & PLACEMENT:
    - The rendering engine applies a smooth, dark shadow gradient (black fading to transparent) directly behind the text area to guarantee contrast against bright or dynamic episode imagery.
@@ -148,8 +148,8 @@ User Style Direction: {user_prompt or 'Match the authentic tone, genre, and aest
 Return ONLY a JSON object with these exact keys:
 - "font_family": Name of the selected open-source Google Font for the title.
 - "subheading_font_family": Name of the selected complementary open-source Google Font for the subtitle.
-- "title_font_size": Integer between 65 and 105 (default 82).
-- "subheading_font_size": Integer between 26 and 42 (default 34).
+- "title_font_size": Integer between 90 and 130 (default 108).
+- "subheading_font_size": Integer between 36 and 54 (default 44).
 - "font_color": High-luminance hex color code for the main episode title.
 - "subheading_color": Complementary, readable hex color for season/episode text.
 - "text_position": One of ["left_center", "left_bottom", "center_bottom", "right_center", "right_bottom", "top_left", "center"].
@@ -161,8 +161,8 @@ Return ONLY a JSON object with these exact keys:
 - "subheading_tracking": Integer between 0 and 6.
 - "subheading_format": "s_pad_ep_num", "season_num_ep_num", "s_pad_e_pad", "season_word_ep_word", or "compact_pad".
 - "subheading_icon": Separator character between season and episode (e.g. "•", "-", ":", "/", or "").
-- "subheading_gap": Integer between 8 and 24 (default 12).
-- "text_box_width_pct": Integer between 35 and 55 (default 42).
+- "subheading_gap": Integer between 10 and 26 (default 14).
+- "text_box_width_pct": Integer between 40 and 55 (default 46).
 - "reasoning": 1-2 sentences explaining how the font choices, positioning, casing, tracking, and palette capture the show's aesthetic and poster identity.
 """
 
@@ -194,16 +194,16 @@ Return ONLY a JSON object with these exact keys:
 
             # Defensive post-processing: font sizes bounds
             try:
-                tfs = int(data.get("title_font_size", 82))
-                data["title_font_size"] = max(40, min(140, tfs))
+                tfs = int(data.get("title_font_size", 108))
+                data["title_font_size"] = max(50, min(180, tfs))
             except Exception:
-                data["title_font_size"] = 82
+                data["title_font_size"] = 108
 
             try:
-                sfs = int(data.get("subheading_font_size", 34))
-                data["subheading_font_size"] = max(20, min(60, sfs))
+                sfs = int(data.get("subheading_font_size", 52))
+                data["subheading_font_size"] = max(24, min(85, sfs))
             except Exception:
-                data["subheading_font_size"] = 34
+                data["subheading_font_size"] = 52
 
             # Subheading font fallback
             if not data.get("subheading_font_family"):
@@ -228,14 +228,14 @@ Return ONLY a JSON object with these exact keys:
                 data["subheading_tracking"] = 0
 
             try:
-                data["subheading_gap"] = max(4, min(36, int(data.get("subheading_gap", 12))))
+                data["subheading_gap"] = max(4, min(48, int(data.get("subheading_gap", 16))))
             except Exception:
-                data["subheading_gap"] = 12
+                data["subheading_gap"] = 16
 
             try:
-                data["text_box_width_pct"] = max(30, min(65, int(data.get("text_box_width_pct", 42))))
+                data["text_box_width_pct"] = max(30, min(65, int(data.get("text_box_width_pct", 46))))
             except Exception:
-                data["text_box_width_pct"] = 42
+                data["text_box_width_pct"] = 46
 
             fmt = str(data.get("subheading_format", "s_pad_ep_num")).strip()
             valid_fmts = ("s_pad_ep_num", "season_num_ep_num", "s_pad_ep_pad", "s_pad_e_pad", "season_word_ep_word", "compact_pad")
@@ -284,15 +284,15 @@ Return ONLY a JSON object with these exact keys:
                 "gradient_width_pct": 48,
                 "gradient_opacity_pct": 90,
                 "subheading_icon": "•",
-                "title_font_size": 82,
-                "subheading_font_size": 34,
+                "title_font_size": 108,
+                "subheading_font_size": 52,
                 "text_position": "left_center",
                 "subheading_position": "above",
                 "subheading_casing": "upper",
                 "subheading_tracking": 0,
                 "subheading_format": "s_pad_ep_num",
-                "subheading_gap": 12,
-                "text_box_width_pct": 42,
+                "subheading_gap": 16,
+                "text_box_width_pct": 46,
                 "reasoning": user_msg
             }
 

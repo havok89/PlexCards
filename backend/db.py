@@ -54,10 +54,10 @@ def init_db():
         subheading_icon TEXT DEFAULT 'dot', -- 'dot', 'delta', 'dash', 'none'
         ai_prompt TEXT,
         has_custom_style INTEGER DEFAULT 0,
-        title_font_size INTEGER DEFAULT 82,
-        subheading_font_size INTEGER DEFAULT 34,
-        text_box_width_pct INTEGER DEFAULT 42,
-        subheading_gap INTEGER DEFAULT 12,
+        title_font_size INTEGER DEFAULT 108,
+        subheading_font_size INTEGER DEFAULT 52,
+        text_box_width_pct INTEGER DEFAULT 46,
+        subheading_gap INTEGER DEFAULT 16,
         subheading_casing TEXT DEFAULT 'upper',
         subheading_position TEXT DEFAULT 'above',
         subheading_tracking INTEGER DEFAULT 0,
@@ -73,13 +73,13 @@ def init_db():
     if "has_custom_style" not in columns:
         cursor.execute("ALTER TABLE show_styles ADD COLUMN has_custom_style INTEGER DEFAULT 0")
     if "title_font_size" not in columns:
-        cursor.execute("ALTER TABLE show_styles ADD COLUMN title_font_size INTEGER DEFAULT 82")
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN title_font_size INTEGER DEFAULT 108")
     if "subheading_font_size" not in columns:
-        cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_font_size INTEGER DEFAULT 34")
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_font_size INTEGER DEFAULT 52")
     if "text_box_width_pct" not in columns:
-        cursor.execute("ALTER TABLE show_styles ADD COLUMN text_box_width_pct INTEGER DEFAULT 42")
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN text_box_width_pct INTEGER DEFAULT 46")
     if "subheading_gap" not in columns:
-        cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_gap INTEGER DEFAULT 12")
+        cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_gap INTEGER DEFAULT 16")
     if "subheading_font_family" not in columns:
         cursor.execute("ALTER TABLE show_styles ADD COLUMN subheading_font_family TEXT DEFAULT NULL")
     if "subheading_casing" not in columns:
@@ -225,10 +225,10 @@ def get_show(rating_key: str) -> Optional[Dict[str, Any]]:
            st.gradient_side, st.gradient_width_pct, st.gradient_opacity_pct, 
            st.show_subheading, st.subheading_format, st.subheading_icon, st.ai_prompt,
            st.has_custom_style,
-           COALESCE(st.title_font_size, 82) AS title_font_size,
-           COALESCE(st.subheading_font_size, 34) AS subheading_font_size,
-           COALESCE(st.text_box_width_pct, 42) AS text_box_width_pct,
-           COALESCE(st.subheading_gap, 12) AS subheading_gap,
+           COALESCE(st.title_font_size, 108) AS title_font_size,
+           COALESCE(st.subheading_font_size, 52) AS subheading_font_size,
+           COALESCE(st.text_box_width_pct, 46) AS text_box_width_pct,
+           COALESCE(st.subheading_gap, 16) AS subheading_gap,
            COALESCE(st.subheading_casing, 'upper') AS subheading_casing,
            COALESCE(st.subheading_position, 'above') AS subheading_position,
            COALESCE(st.subheading_tracking, 0) AS subheading_tracking
@@ -249,10 +249,10 @@ def get_all_shows() -> List[Dict[str, Any]]:
            st.gradient_side, st.gradient_width_pct, st.gradient_opacity_pct, 
            st.show_subheading, st.subheading_format, st.subheading_icon, st.ai_prompt,
            COALESCE(st.has_custom_style, 0) AS has_custom_style,
-           COALESCE(st.title_font_size, 82) AS title_font_size,
-           COALESCE(st.subheading_font_size, 34) AS subheading_font_size,
-           COALESCE(st.text_box_width_pct, 42) AS text_box_width_pct,
-           COALESCE(st.subheading_gap, 12) AS subheading_gap,
+           COALESCE(st.title_font_size, 108) AS title_font_size,
+           COALESCE(st.subheading_font_size, 52) AS subheading_font_size,
+           COALESCE(st.text_box_width_pct, 46) AS text_box_width_pct,
+           COALESCE(st.subheading_gap, 16) AS subheading_gap,
            COALESCE(st.subheading_casing, 'upper') AS subheading_casing,
            COALESCE(st.subheading_position, 'above') AS subheading_position,
            COALESCE(st.subheading_tracking, 0) AS subheading_tracking,
@@ -301,10 +301,10 @@ def update_show_style(rating_key: str, style_data: Dict[str, Any]):
             COALESCE(:subheading_icon, 'dot'), 
             :ai_prompt, 
             COALESCE(:has_custom_style, 1),
-            COALESCE(:title_font_size, 82),
-            COALESCE(:subheading_font_size, 34),
-            COALESCE(:text_box_width_pct, 42),
-            COALESCE(:subheading_gap, 12),
+            COALESCE(:title_font_size, 108),
+            COALESCE(:subheading_font_size, 52),
+            COALESCE(:text_box_width_pct, 46),
+            COALESCE(:subheading_gap, 16),
             COALESCE(:subheading_casing, 'upper'),
             COALESCE(:subheading_position, 'above'),
             COALESCE(:subheading_tracking, 0))

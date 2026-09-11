@@ -276,9 +276,9 @@ class TitleCardRenderer:
         show_subheading = bool(style.get("show_subheading", 1))
         sub_icon = style.get("subheading_icon", "dot")
         sub_fmt = style.get("subheading_format", "season_num_ep_num")
-        title_font_size = int(style.get("title_font_size") or 82)
-        sub_font_size = int(style.get("subheading_font_size") or 34)
-        sub_gap = int(style.get("subheading_gap") if style.get("subheading_gap") is not None else 12)
+        title_font_size = int(style.get("title_font_size") or 108)
+        sub_font_size = int(style.get("subheading_font_size") or 52)
+        sub_gap = int(style.get("subheading_gap") if style.get("subheading_gap") is not None else 16)
 
         # 3. Text Preparation & Width Calculation
         # Layout metrics based on text_position and text_box_width_pct

@@ -243,8 +243,8 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
         <div className="flex justify-between text-[11px] text-gray-400 mb-1">
           <span>Text Box Width</span>
           <span className="font-mono text-gray-300">
-            {styleConfig.text_box_width_pct || 42}% of still
-            {(!styleConfig.text_box_width_pct || styleConfig.text_box_width_pct === 42) && (
+            {styleConfig.text_box_width_pct || 46}% of still
+            {(!styleConfig.text_box_width_pct || styleConfig.text_box_width_pct === 46) && (
               <span className="text-brand-400 ml-1 font-sans text-[10px]">(Default)</span>
             )}
             {styleConfig.text_box_width_pct === 50 && (
@@ -258,7 +258,7 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
             min="35"
             max="75"
             step="1"
-            value={styleConfig.text_box_width_pct || 42}
+            value={styleConfig.text_box_width_pct || 46}
             onChange={(e) =>
               setStyleConfig((prev) => ({
                 ...prev,
@@ -271,9 +271,9 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
             type="number"
             min="35"
             max="75"
-            value={styleConfig.text_box_width_pct || 42}
+            value={styleConfig.text_box_width_pct || 46}
             onChange={(e) => {
-              const val = Math.max(35, Math.min(75, Number(e.target.value) || 42));
+              const val = Math.max(35, Math.min(75, Number(e.target.value) || 46));
               setStyleConfig((prev) => ({
                 ...prev,
                 text_box_width_pct: val
@@ -285,10 +285,10 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
         <div className="flex justify-between text-[10px] text-gray-500 mt-1">
           <button
             type="button"
-            onClick={() => setStyleConfig((prev) => ({ ...prev, text_box_width_pct: 42 }))}
-            className={`hover:text-white transition ${(!styleConfig.text_box_width_pct || styleConfig.text_box_width_pct === 42) ? 'text-brand-400 font-semibold' : ''}`}
+            onClick={() => setStyleConfig((prev) => ({ ...prev, text_box_width_pct: 46 }))}
+            className={`hover:text-white transition ${(!styleConfig.text_box_width_pct || styleConfig.text_box_width_pct === 46) ? 'text-brand-400 font-semibold' : ''}`}
           >
-            Default (42%)
+            Default (46%)
           </button>
           <button
             type="button"
@@ -359,14 +359,14 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
       <div>
         <div className="flex justify-between text-[11px] text-gray-400 mb-1">
           <span>Title Font Size</span>
-          <span className="font-mono text-gray-300">{styleConfig.title_font_size || 82}px</span>
+          <span className="font-mono text-gray-300">{styleConfig.title_font_size || 108}px</span>
         </div>
         <div className="flex items-center gap-2">
           <input
             type="range"
-            min="40"
-            max="140"
-            value={styleConfig.title_font_size || 82}
+            min="50"
+            max="180"
+            value={styleConfig.title_font_size || 108}
             onChange={(e) =>
               setStyleConfig((prev) => ({
                 ...prev,
@@ -377,11 +377,11 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
           />
           <input
             type="number"
-            min="40"
-            max="140"
-            value={styleConfig.title_font_size || 82}
+            min="50"
+            max="180"
+            value={styleConfig.title_font_size || 108}
             onChange={(e) => {
-              const val = Math.max(40, Math.min(140, Number(e.target.value) || 82));
+              const val = Math.max(50, Math.min(180, Number(e.target.value) || 108));
               setStyleConfig((prev) => ({
                 ...prev,
                 title_font_size: val
@@ -812,14 +812,14 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
             <div>
               <div className="flex justify-between text-[11px] text-gray-400 mb-1">
                 <span>Subheading Font Size</span>
-                <span className="font-mono text-gray-300">{styleConfig.subheading_font_size || 34}px</span>
+                <span className="font-mono text-gray-300">{styleConfig.subheading_font_size || 52}px</span>
               </div>
               <div className="flex items-center gap-2">
                 <input
                   type="range"
-                  min="20"
-                  max="60"
-                  value={styleConfig.subheading_font_size || 34}
+                  min="24"
+                  max="85"
+                  value={styleConfig.subheading_font_size || 52}
                   onChange={(e) =>
                     setStyleConfig((prev) => ({
                       ...prev,
@@ -830,11 +830,11 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
                 />
                 <input
                   type="number"
-                  min="20"
-                  max="60"
-                  value={styleConfig.subheading_font_size || 34}
+                  min="24"
+                  max="85"
+                  value={styleConfig.subheading_font_size || 52}
                   onChange={(e) => {
-                    const val = Math.max(20, Math.min(60, Number(e.target.value) || 34));
+                    const val = Math.max(24, Math.min(85, Number(e.target.value) || 52));
                     setStyleConfig((prev) => ({
                       ...prev,
                       subheading_font_size: val
@@ -849,14 +849,14 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
             <div>
               <div className="flex justify-between text-[11px] text-gray-400 mb-1">
                 <span>Distance to Title (Gap)</span>
-                <span className="font-mono text-gray-300">{styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 12}px</span>
+                <span className="font-mono text-gray-300">{styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 16}px</span>
               </div>
               <div className="flex items-center gap-2">
                 <input
                   type="range"
                   min="0"
                   max="48"
-                  value={styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 12}
+                  value={styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 16}
                   onChange={(e) =>
                     setStyleConfig((prev) => ({
                       ...prev,
@@ -869,7 +869,7 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
                   type="number"
                   min="0"
                   max="48"
-                  value={styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 12}
+                  value={styleConfig.subheading_gap !== undefined ? styleConfig.subheading_gap : 16}
                   onChange={(e) => {
                     const val = Math.max(0, Math.min(48, Number(e.target.value) || 0));
                     setStyleConfig((prev) => ({

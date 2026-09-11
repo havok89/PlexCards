@@ -25,8 +25,8 @@ class SyncManager:
         """
         Cascade to find or generate the best available still image for an episode card:
         1. TMDb official episode promotional still
-        2. Plex episode video thumbnail
-        3. Show backdrop art (from TMDb or Plex)
+        2. Clean show backdrop art (from TMDb or Plex show art)
+        3. Plex episode video thumbnail (last-resort fallback if no clean show art exists)
         4. Clean cinematic dark canvas
         """
         tmdb_id = show.get("tmdb_id")
@@ -42,7 +42,42 @@ class SyncManager:
             except Exception as e:
                 logger.warning(f"Failed to fetch TMDb still for {show.get('title')} S{s_num:02d}E{e_num:02d}: {e}")
 
-        # 2. Plex episode thumbnail
+        # 2. Clean Show backdrop art (from TMDb or Plex show art)
+        # We prioritize high-resolution, textless show backdrop art over Plex thumbnails,
+        # because Plex thumbnails frequently contain old title cards from other programs or low-res captures.
+        show_key = show.get("rating_key", "default")
+        backdrop_url = show.get("backdrop_url")
+        if not backdrop_url and tmdb_id:
+            try:
+                details = self.tmdb.get_show_details(tmdb_id)
+                if details:
+                    backdrop_url = details.get("backdrop_url")
+            except Exception:
+                pass
+
+        if not backdrop_url and show_key != "default":
+            try:
+                plex_item = self.plex.server.fetchItem(int(show_key))
+                if getattr(plex_item, "artUrl", None):
+                    backdrop_url = plex_item.artUrl
+            except Exception:
+                pass
+
+        if backdrop_url:
+            backdrop_path = STILLS_DIR / f"backdrop_{show_key}.jpg"
+            if backdrop_path.exists():
+                return backdrop_path
+            try:
+                r = requests.get(backdrop_url, timeout=15)
+                if r.status_code == 200:
+                    with open(backdrop_path, "wb") as f:
+                        f.write(r.content)
+                    logger.info(f"🎨 Used clean show backdrop fallback for {show.get('title')} S{s_num:02d}E{e_num:02d}")
+                    return backdrop_path
+            except Exception as e:
+                logger.warning(f"Could not download show backdrop for show {show_key}: {e}")
+
+        # 3. Plex episode thumbnail (fallback only if no TMDb episode still or show backdrop exists)
         ep_key = ep.get("rating_key")
         thumb_url = ep.get("thumb_url")
         if thumb_url and ep_key:
@@ -58,31 +93,6 @@ class SyncManager:
                     return plex_still_path
             except Exception as e:
                 logger.warning(f"Could not download Plex thumbnail for episode {ep_key}: {e}")
-
-        # 3. Show backdrop art
-        show_key = show.get("rating_key", "default")
-        backdrop_url = show.get("backdrop_url")
-        if not backdrop_url and tmdb_id:
-            try:
-                details = self.tmdb.get_show_details(tmdb_id)
-                if details:
-                    backdrop_url = details.get("backdrop_url")
-            except Exception:
-                pass
-
-        if backdrop_url:
-            backdrop_path = STILLS_DIR / f"backdrop_{show_key}.jpg"
-            if backdrop_path.exists():
-                return backdrop_path
-            try:
-                r = requests.get(backdrop_url, timeout=15)
-                if r.status_code == 200:
-                    with open(backdrop_path, "wb") as f:
-                        f.write(r.content)
-                    logger.info(f"🎨 Used show backdrop fallback for {show.get('title')} S{s_num:02d}E{e_num:02d}")
-                    return backdrop_path
-            except Exception as e:
-                logger.warning(f"Could not download show backdrop for show {show_key}: {e}")
 
         # 4. Cinematic dark canvas fallback
         canvas_path = STILLS_DIR / "generic_canvas.jpg"

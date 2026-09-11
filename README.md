@@ -27,7 +27,7 @@ Whether you want consistent artwork for airing series before designers upload to
 - **Full Typography Control:**
   - Bundled premium Google fonts (*Oswald, Inter, Cinzel, Bebas Neue, Playfair Display, Anton, Barlow Condensed, Rubik, and more*).
   - Custom `.ttf` and `.otf` font uploader built right into the UI.
-  - Granular font sizing slider (40pt – 130pt) and customizable title/subtitle distance offset.
+  - Granular font sizing slider (50pt – 180pt) and customizable title/subtitle distance offset.
   - Subheading formatting: season/episode markers, uppercase toggles, and individual color pickers.
 - **Interactive Live Preview Canvas:** Switch between episodes in real-time to preview typography, color palettes, and gradients against live backdrops before saving.
 
