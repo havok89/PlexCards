@@ -462,7 +462,7 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
         </div>
       ) : (
         /* Single Card View (with optional Interactive Before/After Split Comparison) */
-        <div className="w-full flex justify-center shrink-0">
+        <div className="w-full shrink-0">
           <div
             ref={splitContainerRef}
             onMouseDown={(e) => {
@@ -477,7 +477,8 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
                 handlePointerMove(e.touches[0].clientX);
               }
             }}
-            className={`relative aspect-video w-full max-w-[340px] sm:max-w-[460px] lg:max-w-none bg-dark-900 border border-gray-800 rounded-xl overflow-hidden shadow-2xl flex items-center justify-center select-none ${
+            style={{ aspectRatio: '16 / 9' }}
+            className={`relative aspect-video w-full max-w-[340px] sm:max-w-[460px] lg:max-w-none mx-auto bg-dark-900 border border-gray-800 rounded-xl overflow-hidden shadow-2xl select-none ${
               isCompareMode ? 'cursor-ew-resize' : ''
             }`}
           >
@@ -489,16 +490,16 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
                   <img
                     src={rawStillUrl}
                     alt="Raw Episode Still"
-                    className="w-full h-full object-cover"
+                    className="absolute inset-0 w-full h-full object-cover"
                     draggable={false}
                   />
                 ) : isRawStillLoading ? (
-                  <div className="flex flex-col items-center justify-center text-gray-400 text-xs gap-2">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 text-xs gap-2">
                     <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
                     <span>Loading original raw still...</span>
                   </div>
                 ) : (
-                  <div className="text-gray-400 text-xs">No raw still available</div>
+                  <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-xs">No raw still available</div>
                 )}
 
                 {/* Overlay Layer: Rendered Plex Card with clip-path */}
@@ -549,10 +550,10 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
                   <img
                     src={activeDisplayUrl}
                     alt="Title Card Preview"
-                    className="w-full h-full object-cover"
+                    className="absolute inset-0 w-full h-full object-cover"
                   />
                 ) : isEpisodesLoading && !show.has_custom_style && hasGeminiKey ? (
-                  <div className="flex flex-col items-center justify-center text-center p-6 gap-3 max-w-sm">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 gap-3 max-w-sm mx-auto">
                     <div className="relative">
                       <Loader2 className="w-9 h-9 animate-spin text-purple-400" />
                       <Sparkles className="w-4 h-4 text-brand-400 absolute -top-1 -right-1 animate-pulse" />
@@ -567,7 +568,7 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center text-gray-400 text-xs gap-3">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 text-xs gap-3">
                     <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
                     <span>Loading episode still & rendering preview...</span>
                   </div>
