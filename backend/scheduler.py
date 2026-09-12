@@ -18,7 +18,7 @@ def periodic_library_job():
             mode = s.get("mode", "auto")
             if mode != "ignored":
                 # Process missing cards and auto-upgrade interim cards without re-processing already complete ones
-                sync_manager.sync_show(s["rating_key"], force_all=False)
+                sync_manager.sync_show(s["rating_key"], force_all=False, trigger_source="scheduler")
         logger.info("Scheduled sync job finished successfully.")
     except Exception as e:
         logger.error(f"Error in background sync job: {e}")

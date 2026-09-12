@@ -170,6 +170,18 @@ def init_db():
     )
     """)
 
+    # Season-specific style overrides (e.g. for anthology series)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS season_styles (
+        rating_key TEXT NOT NULL,
+        season_number INTEGER NOT NULL,
+        style_json TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (rating_key, season_number),
+        FOREIGN KEY(rating_key) REFERENCES shows(rating_key) ON DELETE CASCADE
+    )
+    """)
+
     # App settings key-value store
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS settings (
@@ -706,6 +718,83 @@ def get_episodes_for_show(rating_key: str) -> List[Dict[str, Any]]:
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
+
+def get_season_style(rating_key: str, season_number: int) -> Optional[Dict[str, Any]]:
+    """Retrieve custom style configuration for a specific season, if one exists."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT style_json FROM season_styles
+        WHERE rating_key = ? AND season_number = ?
+    """, (str(rating_key), int(season_number)))
+    row = cursor.fetchone()
+    conn.close()
+    if row and row["style_json"]:
+        try:
+            return json.loads(row["style_json"])
+        except Exception:
+            return None
+    return None
+
+def get_all_season_styles(rating_key: str) -> Dict[int, Dict[str, Any]]:
+    """Retrieve all season-specific style overrides for a show."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT season_number, style_json FROM season_styles
+        WHERE rating_key = ?
+    """, (str(rating_key),))
+    rows = cursor.fetchall()
+    conn.close()
+    result = {}
+    for r in rows:
+        try:
+            result[r["season_number"]] = json.loads(r["style_json"])
+        except Exception:
+            pass
+    return result
+
+def set_season_style(rating_key: str, season_number: int, style_data: Dict[str, Any]):
+    """Save or update custom style override for a specific season."""
+    conn = get_db()
+    cursor = conn.cursor()
+    style_json = json.dumps(style_data)
+    cursor.execute("""
+        INSERT INTO season_styles (rating_key, season_number, style_json, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(rating_key, season_number) DO UPDATE SET
+            style_json = excluded.style_json,
+            updated_at = CURRENT_TIMESTAMP
+    """, (str(rating_key), int(season_number), style_json))
+    conn.commit()
+    conn.close()
+
+def delete_season_style(rating_key: str, season_number: int):
+    """Delete custom style override for a season, reverting it to show default."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        DELETE FROM season_styles
+        WHERE rating_key = ? AND season_number = ?
+    """, (str(rating_key), int(season_number)))
+    conn.commit()
+    conn.close()
+
+def get_effective_style(rating_key: str, season_number: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Get effective style configuration for a show/season:
+    Starts with show-level style, and if a season override exists for season_number, merges it on top.
+    """
+    show = get_show(rating_key)
+    base_style = dict(show) if show else {}
+    if season_number is not None:
+        season_override = get_season_style(rating_key, season_number)
+        if season_override:
+            base_style.update(season_override)
+            base_style["has_season_override"] = True
+            base_style["override_season_number"] = season_number
+    return base_style
+
 
 
 

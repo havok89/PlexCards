@@ -4,7 +4,11 @@ from pathlib import Path
 import tempfile
 import requests
 
-from backend.db import init_db, get_db, upsert_show, get_show, get_all_shows, get_setting, get_show_season_posters, record_season_poster, update_show_mode
+from backend.db import (
+    init_db, get_db, upsert_show, get_show, get_all_shows, get_setting,
+    get_show_season_posters, record_season_poster, update_show_mode,
+    get_effective_style
+)
 from backend.plex_client import PlexClient
 from backend.tmdb_client import TMDbClient
 from backend.tvdb_client import TVDbClient
@@ -331,12 +335,78 @@ class SyncManager:
         conn.close()
         logger.info(f"Updated status for {updated_count} shows (prioritizing {priority.upper()}).")
 
+    def _dispatch_sync_notifications(
+        self,
+        show: Dict[str, Any],
+        synced_episodes_log: list,
+        matched_set: Optional[Dict[str, Any]] = None,
+        trigger_source: str = "manual"
+    ):
+        """Dispatches single or consolidated batch Discord notifications for updated episode cards."""
+        if not synced_episodes_log:
+            return
+        try:
+            from backend.discord_notifier import discord_notifier
+            if not discord_notifier.is_configured:
+                return
+
+            is_manual = (trigger_source == "manual")
+            creator = matched_set.get("creator") if matched_set else None
+            set_url = matched_set.get("set_url") if matched_set else None
+            library_name = show.get("library_name")
+
+            is_test = bool(TEST_MODE)
+            if len(synced_episodes_log) == 1:
+                ep_info = synced_episodes_log[0]
+                discord_notifier.notify_episode_card(
+                    show_title=show["title"],
+                    season_number=ep_info["season_number"],
+                    episode_number=ep_info["episode_number"],
+                    episode_title=ep_info["title"],
+                    source=ep_info["source"],
+                    card_image_path_or_url=ep_info.get("card_url"),
+                    card_image_bytes=ep_info.get("image_bytes"),
+                    creator=creator,
+                    set_url=set_url,
+                    library_name=library_name,
+                    is_manual=is_manual,
+                    is_test=is_test
+                )
+            else:
+                seasons = sorted(list(set(e["season_number"] for e in synced_episodes_log)))
+                for s in seasons:
+                    s_eps = [e for e in synced_episodes_log if e["season_number"] == s]
+                    ep_nums = sorted([e["episode_number"] for e in s_eps])
+                    if len(ep_nums) == 1:
+                        ep_range = f"E{ep_nums[0]:02d}"
+                    else:
+                        ep_range = f"E{min(ep_nums):02d}–E{max(ep_nums):02d}"
+
+                    hero_ep = s_eps[0]
+                    discord_notifier.notify_batch_cards_grouped(
+                        show_title=show["title"],
+                        season_number=s,
+                        episodes_count=len(s_eps),
+                        ep_range=ep_range,
+                        source=hero_ep["source"],
+                        creator=creator,
+                        set_url=set_url,
+                        hero_image_path_or_url=hero_ep.get("card_url"),
+                        hero_image_bytes=hero_ep.get("image_bytes"),
+                        library_name=library_name,
+                        is_manual=is_manual,
+                        is_test=is_test
+                    )
+        except Exception as e:
+            logger.warning(f"Error dispatching Discord notifications for '{show.get('title')}': {e}")
+
     def sync_show_generator(
         self,
         rating_key: str,
         force_all: bool = True,
         force_live: bool = False,
-        source_mode: Optional[str] = None
+        source_mode: Optional[str] = None,
+        trigger_source: str = "manual"
     ):
         """Generator that yields progress events while updating cards and posters for a show."""
         show = get_show(rating_key)
@@ -434,6 +504,7 @@ class SyncManager:
             total_items = len(target_episodes)
             updated_count = 0
             current_item = 0
+            synced_episodes_log = []
 
             if total_items == 0:
                 yield {"type": "progress", "current": 0, "total": 0, "label": "", "message": "All cards are already up to date."}
@@ -471,12 +542,13 @@ class SyncManager:
                 if not still_file:
                     continue
 
+                season_style = get_effective_style(rating_key, s_num)
                 card_img = self.renderer.render(
                     base_image_path=still_file,
                     episode_title=ep["title"],
                     season_num=s_num,
                     episode_num=e_num,
-                    style_config=show,
+                    style_config=season_style,
                     logo_image_path=self.get_show_logo_path(show)
                 )
 
@@ -488,13 +560,27 @@ class SyncManager:
                     card_img.save(out_path, quality=95)
                     logger.info(f"🧪 [TEST MODE] Saved generated card to {out_path}")
 
+                card_bytes = None
                 with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                     card_img.save(tmp.name, quality=95)
                     self.plex.upload_episode_card(ep_key, tmp.name, force_live=force_live)
+                    try:
+                        card_bytes = Path(tmp.name).read_bytes()
+                    except Exception:
+                        pass
                     Path(tmp.name).unlink(missing_ok=True)
 
                 self._update_episode_card_status(ep_key, "generator_preset")
                 updated_count += 1
+                synced_episodes_log.append({
+                    "season_number": s_num,
+                    "episode_number": e_num,
+                    "title": ep["title"],
+                    "source": "generator",
+                    "image_bytes": card_bytes
+                })
+
+            self._dispatch_sync_notifications(show, synced_episodes_log, trigger_source=trigger_source)
 
             yield {
                 "type": "done",
@@ -599,6 +685,7 @@ class SyncManager:
         current_item = 0
         updated_count = 0
         updated_season_posters = 0
+        synced_episodes_log = []
 
         if total_items == 0:
             yield {"type": "progress", "current": 0, "total": 0, "label": "", "message": "All cards are already up to date."}
@@ -659,16 +746,24 @@ class SyncManager:
                 self.plex.upload_episode_card(ep_key, mediux_card_url, force_live=force_live)
                 self._update_episode_card_status(ep_key, "mediux", mediux_card_url)
                 updated_count += 1
+                synced_episodes_log.append({
+                    "season_number": s_num,
+                    "episode_number": e_num,
+                    "title": ep["title"],
+                    "source": "mediux",
+                    "card_url": mediux_card_url
+                })
             else:
                 # Fallback: Render clean interim card using preset
                 still_file = self.get_episode_backdrop_still(show, ep)
                 if still_file:
+                    season_style = get_effective_style(rating_key, s_num)
                     card_img = self.renderer.render(
                         base_image_path=still_file,
                         episode_title=ep["title"],
                         season_num=s_num,
                         episode_num=e_num,
-                        style_config=show,
+                        style_config=season_style,
                         logo_image_path=self.get_show_logo_path(show)
                     )
                     if is_test:
@@ -678,13 +773,25 @@ class SyncManager:
                         card_img.save(out_path, quality=95)
                         logger.info(f"🧪 [TEST MODE] Saved interim card to {out_path}")
 
+                    card_bytes = None
                     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                         card_img.save(tmp.name, quality=95)
                         self.plex.upload_episode_card(ep_key, tmp.name, force_live=force_live)
+                        try:
+                            card_bytes = Path(tmp.name).read_bytes()
+                        except Exception:
+                            pass
                         Path(tmp.name).unlink(missing_ok=True)
 
                     self._update_episode_card_status(ep_key, "generator_interim")
                     updated_count += 1
+                    synced_episodes_log.append({
+                        "season_number": s_num,
+                        "episode_number": e_num,
+                        "title": ep["title"],
+                        "source": "generator_interim",
+                        "image_bytes": card_bytes
+                    })
 
         # Pull Season Posters if present in MediUX set
         if target_seasons:
@@ -731,6 +838,9 @@ class SyncManager:
             plex_listener.ignore_show(rating_key, duration=30.0)
         except Exception:
             pass
+
+        self._dispatch_sync_notifications(show, synced_episodes_log, matched_set=matched_set, trigger_source=trigger_source)
+
         yield {
             "type": "done",
             "result": {
@@ -751,11 +861,12 @@ class SyncManager:
         rating_key: str,
         force_all: bool = True,
         force_live: bool = False,
-        source_mode: Optional[str] = None
+        source_mode: Optional[str] = None,
+        trigger_source: str = "manual"
     ) -> Dict[str, Any]:
         """Apply cards for a show according to its mode and style (synchronous wrapper)."""
         final_result = None
-        for event in self.sync_show_generator(rating_key, force_all=force_all, force_live=force_live, source_mode=source_mode):
+        for event in self.sync_show_generator(rating_key, force_all=force_all, force_live=force_live, source_mode=source_mode, trigger_source=trigger_source):
             if event.get("type") == "done":
                 final_result = event.get("result")
         return final_result or {"status": "error", "message": "No result returned from sync generator"}
@@ -855,6 +966,27 @@ class SyncManager:
 
             self.plex.upload_episode_card(ep_key, mediux_card_url, force_live=force_live)
             self._update_episode_card_status(ep_key, "mediux", mediux_card_url)
+
+            try:
+                from backend.discord_notifier import discord_notifier
+                creator = matched_set.get("creator") if 'matched_set' in locals() and matched_set else None
+                set_url = matched_set.get("set_url") if 'matched_set' in locals() and matched_set else None
+                discord_notifier.notify_episode_card(
+                    show_title=show["title"],
+                    season_number=season_number,
+                    episode_number=episode_number,
+                    episode_title=target_ep["title"],
+                    source="mediux",
+                    card_image_path_or_url=mediux_card_url,
+                    creator=creator,
+                    set_url=set_url,
+                    library_name=show.get("library_name"),
+                    is_manual=True,
+                    is_test=is_test
+                )
+            except Exception as e:
+                logger.warning(f"Failed to dispatch Discord notification: {e}")
+
             return {
                 "status": "success",
                 "test_mode": is_test,
@@ -867,7 +999,7 @@ class SyncManager:
             }
 
         # Otherwise render using Generator
-        style_to_use = dict(show)
+        style_to_use = get_effective_style(rating_key, season_number)
         if custom_style:
             style_to_use.update(custom_style)
 
@@ -891,13 +1023,34 @@ class SyncManager:
             card_img.save(out_path, quality=95)
             logger.info(f"🧪 [TEST MODE] Saved generated card to {out_path}")
 
+        card_bytes = None
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
             card_img.save(tmp.name, quality=95)
             self.plex.upload_episode_card(ep_key, tmp.name, force_live=force_live)
+            try:
+                card_bytes = Path(tmp.name).read_bytes()
+            except Exception:
+                pass
             Path(tmp.name).unlink(missing_ok=True)
 
         card_status = "generator_preset" if show.get("mode") == "generator_only" else "generator_interim"
         self._update_episode_card_status(ep_key, card_status)
+
+        try:
+            from backend.discord_notifier import discord_notifier
+            discord_notifier.notify_episode_card(
+                show_title=show["title"],
+                season_number=season_number,
+                episode_number=episode_number,
+                episode_title=target_ep["title"],
+                source=card_status,
+                card_image_bytes=card_bytes,
+                library_name=show.get("library_name"),
+                is_manual=True,
+                is_test=is_test
+            )
+        except Exception as e:
+            logger.warning(f"Failed to dispatch Discord notification: {e}")
 
         return {
             "status": "success",

@@ -100,6 +100,11 @@ interface GeneratorControlsProps {
   hasGeminiKey?: boolean;
   activeShowRatingKey?: string;
   currentEp?: Episode;
+  seasonScope?: 'show' | number;
+  setSeasonScope?: (scope: 'show' | number) => void;
+  availableSeasons?: number[];
+  seasonStyles?: Record<number, any>;
+  handleResetSeasonOverride?: () => void;
 }
 
 const PREDEFINED_FORMATS = [
@@ -135,7 +140,12 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
   isSavedJustNow,
   hasGeminiKey = true,
   activeShowRatingKey,
-  currentEp
+  currentEp,
+  seasonScope = 'show',
+  setSeasonScope,
+  availableSeasons = [],
+  seasonStyles = {},
+  handleResetSeasonOverride
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isCustomFormat = !PREDEFINED_FORMATS.includes(styleConfig.subheading_format);
@@ -194,6 +204,50 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Season-Specific Scope Selector */}
+      {availableSeasons && availableSeasons.length > 0 && (
+        <div className="bg-dark-850 border border-gray-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Scope:</span>
+            <select
+              value={seasonScope ?? 'show'}
+              onChange={(e) => {
+                const val = e.target.value === 'show' ? 'show' : Number(e.target.value);
+                setSeasonScope?.(val);
+              }}
+              className="bg-dark-900 border border-gray-700 text-white text-xs rounded-lg px-2.5 py-1 focus:border-brand-500 outline-none font-medium cursor-pointer"
+            >
+              <option value="show">Entire Show (Default)</option>
+              {availableSeasons.map((s) => {
+                const hasOverride = Boolean(seasonStyles?.[s] || seasonStyles?.[String(s)]);
+                return (
+                  <option key={s} value={s}>
+                    Season {s} {hasOverride ? '★ (Custom Override)' : ''}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {seasonScope && seasonScope !== 'show' && (
+            <div className="flex items-center gap-2">
+              {seasonStyles?.[seasonScope] || seasonStyles?.[String(seasonScope)] ? (
+                <button
+                  type="button"
+                  onClick={handleResetSeasonOverride}
+                  className="text-[10px] text-red-400 hover:text-red-300 bg-red-950/40 hover:bg-red-950/60 border border-red-800/60 px-2 py-0.5 rounded transition font-medium"
+                  title="Remove season override and revert to show-level styling"
+                >
+                  Reset to Default
+                </button>
+              ) : (
+                <span className="text-[10px] text-gray-500 italic">Inheriting show default</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* AI Assistant */}
       {hasGeminiKey && (
@@ -1296,10 +1350,10 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
         {isSavedJustNow ? (
           <>
             <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Preset Saved!</span>
+            <span>{seasonScope && seasonScope !== 'show' ? `Season ${seasonScope} Override Saved!` : 'Preset Saved!'}</span>
           </>
         ) : (
-          <span>Save Style Preset</span>
+          <span>{seasonScope && seasonScope !== 'show' ? `Save Season ${seasonScope} Override` : 'Save Show Style Preset'}</span>
         )}
       </button>
     </div>

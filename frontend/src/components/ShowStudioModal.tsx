@@ -70,6 +70,8 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   const [isRevertingSingle, setIsRevertingSingle] = useState<boolean>(false);
   const [isRevertingAll, setIsRevertingAll] = useState<boolean>(false);
   const [revertTarget, setRevertTarget] = useState<'all' | Episode | null>(null);
+  const [seasonStyles, setSeasonStyles] = useState<Record<number, any>>({});
+  const [seasonScope, setSeasonScope] = useState<'show' | number>('show');
 
   // TMDb search and matching state
   const [isTmdbModalOpen, setIsTmdbModalOpen] = useState<boolean>(false);
@@ -128,6 +130,12 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     api.getFonts().then((fonts) => {
       if (isMounted) setAvailableFonts(fonts);
     });
+
+    api.getSeasonStyles(show.rating_key).then((res) => {
+      if (isMounted && res.season_styles) {
+        setSeasonStyles(res.season_styles);
+      }
+    }).catch(() => {});
 
     api.getShowDetails(show.rating_key).then((data) => {
       if (!isMounted) return;
@@ -553,20 +561,143 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     }
   };
 
-  const handleSaveStyle = async () => {
+  const availableSeasons = Array.from(new Set(episodes.map((e) => e.season_number))).sort((a, b) => a - b);
+
+  const getBaseShowStyle = (): StyleConfig => {
+    const s = activeShow || show;
+    return {
+      layout: s.layout || 'standard',
+      text_position: (s.text_position as any) || 'left_center',
+      font_family: s.font_family || 'Oswald',
+      subheading_font_family: s.subheading_font_family || undefined,
+      font_color: s.font_color || '#FFFFFF',
+      subheading_color: s.subheading_color || '#A3A3A3',
+      gradient_side: s.gradient_side || 'left',
+      gradient_width_pct: s.gradient_width_pct || 48,
+      gradient_opacity_pct: s.gradient_opacity_pct || 88,
+      show_subheading: s.show_subheading !== undefined ? s.show_subheading : 1,
+      subheading_format: s.subheading_format || 'season_num_ep_num',
+      subheading_icon: normalizeSeparator(s.subheading_icon),
+      title_font_size: s.title_font_size || 108,
+      subheading_font_size: s.subheading_font_size || 52,
+      text_box_width_pct: s.text_box_width_pct || 46,
+      subheading_gap: s.subheading_gap !== undefined ? s.subheading_gap : 16,
+      subheading_casing: s.subheading_casing || 'upper',
+      subheading_position: s.subheading_position || 'above',
+      subheading_tracking: s.subheading_tracking !== undefined ? s.subheading_tracking : 0,
+      frosted_blur_pct: s.frosted_blur_pct !== undefined ? s.frosted_blur_pct : 0,
+      film_grain_pct: s.film_grain_pct !== undefined ? s.film_grain_pct : 0,
+      vignette_pct: s.vignette_pct !== undefined ? s.vignette_pct : 0,
+      text_shadow_mode: s.text_shadow_mode || 'none',
+      show_logo: s.show_logo !== undefined ? s.show_logo : 0,
+      logo_position: s.logo_position || 'top_right',
+      logo_opacity_pct: s.logo_opacity_pct !== undefined ? s.logo_opacity_pct : 90,
+      logo_monochrome: s.logo_monochrome !== undefined ? s.logo_monochrome : 0
+    };
+  };
+
+  const handleScopeChange = (newScope: 'show' | number) => {
+    setSeasonScope(newScope);
+    const base = getBaseShowStyle();
+    if (newScope === 'show') {
+      setStyleConfig(base);
+    } else {
+      const override = seasonStyles[newScope] || seasonStyles[String(newScope)];
+      if (override) {
+        setStyleConfig({
+          ...base,
+          ...override
+        });
+      } else {
+        setStyleConfig(base);
+      }
+
+      // Automatically jump preview episode to the selected season
+      const epIdx = episodes.findIndex((e) => e.season_number === Number(newScope));
+      if (epIdx !== -1) {
+        setSelectedEpIndex(epIdx);
+      }
+
+      // Asynchronously ensure latest override from backend
+      api.getSeasonStyle(activeShow.rating_key, Number(newScope)).then((res) => {
+        if (res && res.has_override && res.override) {
+          setSeasonStyles((prev) => ({
+            ...prev,
+            [newScope]: res.override,
+            [String(newScope)]: res.override
+          }));
+          setStyleConfig({
+            ...base,
+            ...res.override
+          });
+        }
+      }).catch(() => {});
+    }
+  };
+
+  const handleResetSeasonOverride = async () => {
+    if (seasonScope === 'show') return;
     try {
-      await api.saveStyle(activeShow.rating_key, {
-        ...styleConfig,
-        subheading_font_family: styleConfig.subheading_font_family || '',
-        ai_prompt: aiReasoning
+      await api.deleteSeasonStyle(activeShow.rating_key, Number(seasonScope));
+      setSeasonStyles((prev) => {
+        const next = { ...prev };
+        delete next[seasonScope];
+        delete next[String(seasonScope)];
+        return next;
       });
-      setIsSavedJustNow(true);
-      setTimeout(() => setIsSavedJustNow(false), 2500);
+      const base = getBaseShowStyle();
+      setStyleConfig(base);
       showToast({
         type: 'success',
-        title: 'Preset Saved',
-        message: `Title card style preset saved for "${activeShow.title}".`
+        title: 'Season Override Removed',
+        message: `Season ${seasonScope} reverted to show default styling.`
       });
+      onShowUpdated();
+    } catch (err) {
+      showToast({
+        type: 'error',
+        title: 'Reset Failed',
+        message: String(err)
+      });
+    }
+  };
+
+  const handleSaveStyle = async () => {
+    try {
+      if (seasonScope === 'show') {
+        await api.saveStyle(activeShow.rating_key, {
+          ...styleConfig,
+          subheading_font_family: styleConfig.subheading_font_family || '',
+          ai_prompt: aiReasoning
+        });
+        setActiveShow((prev) => ({
+          ...prev,
+          ...styleConfig,
+          has_custom_style: 1
+        }));
+        showToast({
+          type: 'success',
+          title: 'Preset Saved',
+          message: `Default style preset saved for "${activeShow.title}".`
+        });
+      } else {
+        await api.saveSeasonStyle(activeShow.rating_key, Number(seasonScope), {
+          ...styleConfig,
+          subheading_font_family: styleConfig.subheading_font_family || ''
+        });
+        setSeasonStyles((prev) => ({
+          ...prev,
+          [seasonScope]: { ...styleConfig },
+          [String(seasonScope)]: { ...styleConfig }
+        }));
+        showToast({
+          type: 'success',
+          title: 'Season Override Saved',
+          message: `Season ${seasonScope} style override saved for "${activeShow.title}".`
+        });
+      }
+      setIsSavedJustNow(true);
+      setTimeout(() => setIsSavedJustNow(false), 2500);
       onShowUpdated();
     } catch (err) {
       showToast({
@@ -584,11 +715,22 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     setIsApplyingSingle(true);
     try {
       // 1. Auto-save current styling first so preview matches what gets generated
-      await api.saveStyle(activeShow.rating_key, {
-        ...styleConfig,
-        subheading_font_family: styleConfig.subheading_font_family || '',
-        ai_prompt: aiReasoning
-      });
+      if (seasonScope === 'show') {
+        await api.saveStyle(activeShow.rating_key, {
+          ...styleConfig,
+          subheading_font_family: styleConfig.subheading_font_family || '',
+          ai_prompt: aiReasoning
+        });
+      } else {
+        await api.saveSeasonStyle(activeShow.rating_key, seasonScope, {
+          ...styleConfig,
+          subheading_font_family: styleConfig.subheading_font_family || ''
+        });
+        setSeasonStyles((prev) => ({
+          ...prev,
+          [seasonScope]: { ...styleConfig }
+        }));
+      }
 
       // 2. Apply single episode card
       const res = await api.applyEpisodeCard(
@@ -971,6 +1113,11 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
               hasGeminiKey={hasGeminiKey}
               activeShowRatingKey={activeShow.rating_key}
               currentEp={currentEp}
+              seasonScope={seasonScope}
+              setSeasonScope={handleScopeChange}
+              availableSeasons={availableSeasons}
+              seasonStyles={seasonStyles}
+              handleResetSeasonOverride={handleResetSeasonOverride}
             />
           </div>
         </div>

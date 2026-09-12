@@ -17,7 +17,9 @@ import {
   Plus,
   Sliders,
   Film,
-  Palette
+  Palette,
+  Bell,
+  Send
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -48,6 +50,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [defaultMode, setDefaultMode] = useState<string>('ignored');
   const [preferredCreators, setPreferredCreators] = useState<string>('');
   const [newCreatorInput, setNewCreatorInput] = useState<string>('');
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState<string>('');
+  const [discordNotifyLive, setDiscordNotifyLive] = useState<boolean>(true);
+  const [discordNotifyBatch, setDiscordNotifyBatch] = useState<boolean>(true);
+  const [discordNotifyManual, setDiscordNotifyManual] = useState<boolean>(false);
+  const [isTestingDiscord, setIsTestingDiscord] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isBulking, setIsBulking] = useState<boolean>(false);
@@ -76,6 +83,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setDefaultMode(s.default_new_show_mode || 'ignored');
         setPreferredCreators(s.preferred_mediux_creators || '');
         setProviderPriority(s.metadata_provider_priority || 'tvdb');
+        setDiscordWebhookUrl(s.discord_webhook_url || '');
+        setDiscordNotifyLive(s.discord_notify_live_episodes !== 'false');
+        setDiscordNotifyBatch(s.discord_notify_batch_sync !== 'false');
+        setDiscordNotifyManual(s.discord_notify_manual_apply === 'true');
       })
       .catch((err) => console.error('Failed to load settings:', err))
       .finally(() => {
@@ -161,6 +172,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       });
     } finally {
       setIsBulking(false);
+    }
+  };
+
+  const handleTestDiscord = async () => {
+    const trimmed = discordWebhookUrl.trim();
+    if (!trimmed) {
+      showToast({
+        type: 'error',
+        title: 'Webhook URL Required',
+        message: 'Please enter a Discord Webhook URL first.'
+      });
+      return;
+    }
+    setIsTestingDiscord(true);
+    try {
+      const res = await api.testDiscordWebhook(trimmed);
+      showToast({
+        type: 'success',
+        title: 'Discord Notification Delivered',
+        message: res.message || 'Test message received in your Discord channel!'
+      });
+    } catch (err) {
+      showToast({
+        type: 'error',
+        title: 'Discord Webhook Failed',
+        message: String(err)
+      });
+    } finally {
+      setIsTestingDiscord(false);
     }
   };
 
@@ -527,7 +567,131 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </form>
               </div>
 
-              {/* Section 4: Bulk Show Management */}
+              {/* Section 4: Discord Webhook Notifications */}
+              <div className="bg-dark-850 border border-gray-800 rounded-xl p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-indigo-400" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-indigo-300">
+                      Discord Webhook Notifications
+                    </h3>
+                  </div>
+                  <span className="text-[10px] text-gray-500 font-mono">1080p Embed Attachments</span>
+                </div>
+
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  Receive rich Discord embed cards with full-resolution 1080p artwork attached directly to the message. No public IP or domain required.
+                </p>
+
+                {/* Webhook URL Input & Test Button */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-gray-300 block">
+                    Discord Webhook URL
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="url"
+                      value={discordWebhookUrl}
+                      onChange={(e) => {
+                        setDiscordWebhookUrl(e.target.value);
+                      }}
+                      onBlur={(e) => {
+                        handleSaveSetting('discord_webhook_url', e.target.value.trim());
+                      }}
+                      placeholder="https://discord.com/api/webhooks/..."
+                      className="flex-1 bg-dark-900 border border-gray-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-600 outline-none transition font-mono text-[11px]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleTestDiscord}
+                      disabled={isTestingDiscord || !discordWebhookUrl.trim()}
+                      className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shrink-0 shadow-sm"
+                    >
+                      {isTestingDiscord ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Send className="w-3.5 h-3.5" />
+                      )}
+                      <span>Send Test</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Notification Event Toggles */}
+                <div className="space-y-2 pt-2 border-t border-gray-800/80">
+                  <span className="text-[11px] font-semibold text-gray-300 block">
+                    Trigger Events
+                  </span>
+
+                  {/* Toggle 1: Live Episode Imports */}
+                  <label className="flex items-start gap-2.5 cursor-pointer select-none group">
+                    <input
+                      type="checkbox"
+                      checked={discordNotifyLive}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setDiscordNotifyLive(val);
+                        handleSaveSetting('discord_notify_live_episodes', val ? 'true' : 'false');
+                      }}
+                      className="mt-0.5 rounded border-gray-700 bg-dark-900 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-dark-900"
+                    />
+                    <div>
+                      <span className="text-xs font-medium text-gray-200 group-hover:text-white transition">
+                        Live Episode Ingestion (WebSocket)
+                      </span>
+                      <p className="text-[10px] text-gray-500 leading-normal">
+                        Individual card alert whenever a new episode file is added to your Plex server.
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* Toggle 2: Scheduled Batch Scans */}
+                  <label className="flex items-start gap-2.5 cursor-pointer select-none group">
+                    <input
+                      type="checkbox"
+                      checked={discordNotifyBatch}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setDiscordNotifyBatch(val);
+                        handleSaveSetting('discord_notify_batch_sync', val ? 'true' : 'false');
+                      }}
+                      className="mt-0.5 rounded border-gray-700 bg-dark-900 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-dark-900"
+                    />
+                    <div>
+                      <span className="text-xs font-medium text-gray-200 group-hover:text-white transition">
+                        Scheduled Interval Scans (Smart Consolidated Digest)
+                      </span>
+                      <p className="text-[10px] text-gray-500 leading-normal">
+                        Groups multiple synced cards into a clean consolidated digest per show to eliminate channel spam.
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* Toggle 3: Manual Apply */}
+                  <label className="flex items-start gap-2.5 cursor-pointer select-none group">
+                    <input
+                      type="checkbox"
+                      checked={discordNotifyManual}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setDiscordNotifyManual(val);
+                        handleSaveSetting('discord_notify_manual_apply', val ? 'true' : 'false');
+                      }}
+                      className="mt-0.5 rounded border-gray-700 bg-dark-900 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-dark-900"
+                    />
+                    <div>
+                      <span className="text-xs font-medium text-gray-200 group-hover:text-white transition">
+                        Manual Studio Updates
+                      </span>
+                      <p className="text-[10px] text-gray-500 leading-normal">
+                        Send notifications when you manually click "Apply Card" or "Apply All" from the web interface.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Section 5: Bulk Show Management */}
               <div className="bg-dark-850 border border-gray-800 rounded-xl p-4 space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 block">
                   Bulk Library Actions

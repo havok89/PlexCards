@@ -544,6 +544,66 @@ export const api = {
       throw new Error(msg);
     }
     return res.json();
+  },
+
+  async testDiscordWebhook(webhookUrl?: string): Promise<{ status: string; message: string }> {
+    const res = await fetch('/api/notifications/discord/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhook_url: webhookUrl || '' })
+    });
+    if (!res.ok) {
+      let msg = `Discord test failed: status ${res.status}`;
+      try {
+        const data = await res.json();
+        if (data.detail) msg = data.detail;
+      } catch {
+        const text = await res.text();
+        if (text) msg = text;
+      }
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  async getSeasonStyles(ratingKey: string): Promise<{ season_styles: Record<number, any> }> {
+    const res = await fetch(`/api/shows/${ratingKey}/seasons/styles`);
+    if (!res.ok) throw new Error('Failed to load season styles');
+    return res.json();
+  },
+
+  async getSeasonStyle(
+    ratingKey: string,
+    seasonNumber: number
+  ): Promise<{ season_number: number; override: any; effective: any; has_override: boolean }> {
+    const res = await fetch(`/api/shows/${ratingKey}/seasons/${seasonNumber}/style`);
+    if (!res.ok) throw new Error(`Failed to load season ${seasonNumber} style`);
+    return res.json();
+  },
+
+  async saveSeasonStyle(
+    ratingKey: string,
+    seasonNumber: number,
+    style: any
+  ): Promise<{ status: string; season_number: number; override: any; effective: any }> {
+    const res = await fetch(`/api/shows/${ratingKey}/seasons/${seasonNumber}/style`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(style)
+    });
+    if (!res.ok) throw new Error(`Failed to save season ${seasonNumber} style`);
+    return res.json();
+  },
+
+  async deleteSeasonStyle(
+    ratingKey: string,
+    seasonNumber: number
+  ): Promise<{ status: string; season_number: number; effective: any }> {
+    const res = await fetch(`/api/shows/${ratingKey}/seasons/${seasonNumber}/style`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) throw new Error(`Failed to delete season ${seasonNumber} style`);
+    return res.json();
   }
 };
 

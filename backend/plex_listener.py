@@ -269,7 +269,7 @@ class PlexAlertListenerDaemon:
 
             # Sync ONLY missing cards and posters
             is_live = not TEST_MODE
-            result = self.sync_manager.sync_show(show_key, force_all=False, force_live=is_live)
+            result = self.sync_manager.sync_show(show_key, force_all=False, force_live=is_live, trigger_source="live")
             logger.info(f"🎉 Live sync finished for '{show_title}': {result.get('message')}")
 
         except Exception as e:

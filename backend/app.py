@@ -546,6 +546,62 @@ def set_default_style_endpoint(payload: dict = Body(...)):
     saved = set_default_generator_style(payload)
     return {"status": "success", "style": saved}
 
+# --- Discord Webhook Notification Endpoints ---
+@app.post("/api/notifications/discord/test")
+def test_discord_webhook(payload: dict = Body(...)):
+    """Dispatch a test embed to verify Discord webhook connectivity."""
+    from backend.discord_notifier import discord_notifier
+    target_url = payload.get("webhook_url")
+    result = discord_notifier.send_test_notification(webhook_url=target_url)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("message"))
+    return result
+
+# --- Season-Specific Style Override Endpoints ---
+@app.get("/api/shows/{rating_key}/seasons/styles")
+def get_show_season_styles_endpoint(rating_key: str):
+    """Retrieve all season-specific style overrides for a show."""
+    from backend.db import get_all_season_styles
+    return {"season_styles": get_all_season_styles(rating_key)}
+
+@app.get("/api/shows/{rating_key}/seasons/{season_number}/style")
+def get_season_style_endpoint(rating_key: str, season_number: int):
+    """Get season-specific style override and effective style for a season."""
+    from backend.db import get_season_style, get_effective_style
+    override = get_season_style(rating_key, season_number)
+    effective = get_effective_style(rating_key, season_number)
+    return {
+        "season_number": season_number,
+        "override": override,
+        "effective": effective,
+        "has_override": bool(override)
+    }
+
+@app.post("/api/shows/{rating_key}/seasons/{season_number}/style")
+def set_season_style_endpoint(rating_key: str, season_number: int, payload: dict = Body(...)):
+    """Save or update custom style override for a specific season."""
+    from backend.db import set_season_style, get_effective_style
+    set_season_style(rating_key, season_number, payload)
+    effective = get_effective_style(rating_key, season_number)
+    return {
+        "status": "success",
+        "season_number": season_number,
+        "override": payload,
+        "effective": effective
+    }
+
+@app.delete("/api/shows/{rating_key}/seasons/{season_number}/style")
+def delete_season_style_endpoint(rating_key: str, season_number: int):
+    """Delete season-specific style override, reverting to show default."""
+    from backend.db import delete_season_style, get_effective_style
+    delete_season_style(rating_key, season_number)
+    effective = get_effective_style(rating_key, season_number)
+    return {
+        "status": "success",
+        "season_number": season_number,
+        "effective": effective
+    }
+
 @app.post("/api/shows/bulk-mode")
 def bulk_set_show_mode(payload: dict = Body(...)):
     """Bulk update the mode of all shows (e.g. to 'ignored')."""
@@ -707,7 +763,9 @@ def generate_preview(rating_key: str, payload: dict = Body(...)):
     episode_num = payload.get("episode_number", 1)
     episode_title = payload.get("episode_title", "Sample Episode Title")
 
-    style = {**show, **payload}
+    from backend.db import get_effective_style
+    effective_base = get_effective_style(rating_key, season_num)
+    style = {**effective_base, **payload}
     if "subheading_font_family" in payload:
         s_ff = (payload.get("subheading_font_family") or "").strip()
         style["subheading_font_family"] = s_ff if s_ff else None
