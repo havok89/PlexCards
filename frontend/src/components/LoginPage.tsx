@@ -127,7 +127,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           <div className="flex items-center justify-center gap-2">
             <h1 className="text-2xl font-black text-white tracking-tight">PlexCards</h1>
             <span className="text-xs font-mono font-medium px-2 py-0.5 rounded bg-dark-800 border border-gray-700 text-gray-400">
-              v0.8
+              v{__APP_VERSION__}
             </span>
           </div>
           <p className="text-sm text-gray-400 mt-1.5">

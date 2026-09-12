@@ -108,7 +108,12 @@ export interface MediuxSet {
   poster_url?: string;
 }
 
+declare global {
+  const __APP_VERSION__: string;
+}
+
 export interface AppConfig {
+  version?: string;
   test_mode: boolean;
   tv_library: string;
   poll_interval_hours: number;

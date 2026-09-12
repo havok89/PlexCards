@@ -5,6 +5,7 @@ FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
+COPY VERSION /app/VERSION
 COPY frontend/package*.json ./
 RUN npm ci
 
@@ -31,7 +32,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend application
+# Copy VERSION and backend application
+COPY VERSION .
 COPY backend/ ./backend/
 
 # Copy compiled frontend from builder

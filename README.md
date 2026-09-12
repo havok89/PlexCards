@@ -1,6 +1,6 @@
 # PlexCards 🎬🎨
 
-[![Version](https://img.shields.io/badge/version-0.8.0-orange.svg)](https://github.com/havok89/PlexCards/releases)
+[![Version](https://img.shields.io/github/v/release/havok89/PlexCards?include_prereleases&label=version&color=orange)](https://github.com/havok89/PlexCards/releases)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://reactjs.org/)

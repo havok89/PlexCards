@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 import requests
 from backend.db import get_setting
+from backend.version import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ class DiscordNotifier:
                     "color": 0xE5A00D, # Brand gold / amber
                     "fields": [
                         {"name": "Status", "value": "🟢 Connected & Active", "inline": True},
-                        {"name": "Platform", "value": "PlexCards v0.8.0", "inline": True}
+                        {"name": "Platform", "value": f"PlexCards v{__version__}", "inline": True}
                     ],
                     "footer": {
                         "text": "PlexCards • Smart Title Card Automation"

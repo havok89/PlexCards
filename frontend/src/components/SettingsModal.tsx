@@ -763,7 +763,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Footer */}
         <div className="px-6 py-3 border-t border-gray-800 flex items-center justify-between bg-dark-850">
           <div className="text-[11px] text-gray-500 font-mono">
-            PlexCards <span className="text-gray-400">v0.8.0</span>
+            PlexCards <span className="text-gray-400">v{__APP_VERSION__}</span>
           </div>
           <button
             type="button"
