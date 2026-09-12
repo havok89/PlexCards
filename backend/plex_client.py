@@ -20,26 +20,55 @@ class PlexClient:
             self._server = PlexServer(self.base_url, self.token)
         return self._server
 
-    def get_tv_section(self):
-        """Find the TV shows library case-insensitively."""
+    def get_tv_sections(self) -> List[Dict[str, Any]]:
+        """Find all TV show sections on the Plex server."""
         server = self.server
         sections = server.library.sections()
-        
-        # Exact or case-insensitive match
-        for s in sections:
-            if s.title.lower() == PLEX_TV_LIBRARY.lower() and s.type == "show":
-                return s
-        
-        # Fallback to any library of type 'show'
-        for s in sections:
-            if s.type == "show":
-                return s
-                
-        raise ValueError(f"No TV show library found matching '{PLEX_TV_LIBRARY}'. Available: {[s.title for s in sections]}")
+        return [
+            {
+                "key": str(s.key),
+                "title": s.title,
+                "type": s.type
+            }
+            for s in sections if s.type == "show"
+        ]
 
-    def get_all_shows(self) -> List[Dict[str, Any]]:
+    def get_tv_section(self, target_library: Optional[str] = None):
+        """Find the TV shows library case-insensitively or by section key/title."""
+        from backend.db import get_setting
+        server = self.server
+        sections = server.library.sections()
+        tv_sections = [s for s in sections if s.type == "show"]
+
+        if not tv_sections:
+            raise ValueError("No TV show library found on Plex server.")
+
+        # 1. Check explicit target_library
+        if target_library:
+            target_str = str(target_library).strip()
+            for s in tv_sections:
+                if str(s.key) == target_str or s.title.lower() == target_str.lower():
+                    return s
+
+        # 2. Check active_plex_library setting
+        active_lib = get_setting("active_plex_library", None)
+        if active_lib:
+            target_str = str(active_lib).strip()
+            for s in tv_sections:
+                if str(s.key) == target_str or s.title.lower() == target_str.lower():
+                    return s
+
+        # 3. Exact or case-insensitive match on default PLEX_TV_LIBRARY
+        for s in tv_sections:
+            if s.title.lower() == PLEX_TV_LIBRARY.lower():
+                return s
+
+        # 4. Fallback to first available TV library
+        return tv_sections[0]
+
+    def get_all_shows(self, target_library: Optional[str] = None) -> List[Dict[str, Any]]:
         """Retrieve all shows from Plex with their TMDb IDs."""
-        tv_section = self.get_tv_section()
+        tv_section = self.get_tv_section(target_library=target_library)
         plex_shows = tv_section.all()
         
         result = []
@@ -63,7 +92,9 @@ class PlexClient:
                 "backdrop_url": art_url,
                 "total_seasons": len(seasons),
                 "total_episodes": total_episodes,
-                "seasons_list": [s.seasonNumber for s in seasons]
+                "seasons_list": [s.seasonNumber for s in seasons],
+                "library_section_id": str(tv_section.key),
+                "library_name": tv_section.title
             })
             
         return result
@@ -103,6 +134,25 @@ class PlexClient:
         else:
             episode.uploadPoster(filepath=file_path_or_url)
         logger.info(f"✓ Uploaded title card to Plex for episode {episode.title} (S{episode.seasonNumber:02d}E{episode.episodeNumber:02d})")
+
+    def revert_episode_card(self, episode_rating_key: str, force_live: bool = False):
+        """Revert an episode card back to Plex's native auto-generated video frame."""
+        from backend.config import TEST_MODE
+        if TEST_MODE and not force_live:
+            logger.info(f"🧪 [TEST MODE] Skipped reverting episode ID {episode_rating_key} in Plex. (Test mode active)")
+            return
+
+        server = self.server
+        episode = server.fetchItem(int(episode_rating_key))
+        try:
+            episode.deletePoster()
+        except Exception as e:
+            logger.debug(f"Plex deletePoster notice for episode {episode_rating_key}: {e}")
+        try:
+            episode.unlockPoster()
+        except Exception as e:
+            logger.debug(f"Plex unlockPoster notice for episode {episode_rating_key}: {e}")
+        logger.info(f"✓ Reverted episode card in Plex for {episode.title} (S{episode.seasonNumber:02d}E{episode.episodeNumber:02d})")
 
     def get_show_seasons(self, show_rating_key: str) -> List[Dict[str, Any]]:
         """Fetch all seasons for a show from Plex."""

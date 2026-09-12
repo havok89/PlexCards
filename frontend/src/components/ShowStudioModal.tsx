@@ -8,6 +8,7 @@ import { MediuxSetBrowser } from './studio/MediuxSetBrowser';
 import { GeneratorControls } from './studio/GeneratorControls';
 import { TmdbLinkModal } from './studio/TmdbLinkModal';
 import { PlexFixMatchModal } from './studio/PlexFixMatchModal';
+import { RevertConfirmModal } from './studio/RevertConfirmModal';
 
 // Keep a component-level cache of downloaded preview ObjectURLs so cycling episodes or toggling tabs is instant
 const previewBlobCache = new Map<string, string>();
@@ -66,6 +67,9 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   const [previewTab, setPreviewTab] = useState<'mediux' | 'generator'>('mediux');
   const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(initialHasGeminiKey);
   const [isExportingZip, setIsExportingZip] = useState<boolean>(false);
+  const [isRevertingSingle, setIsRevertingSingle] = useState<boolean>(false);
+  const [isRevertingAll, setIsRevertingAll] = useState<boolean>(false);
+  const [revertTarget, setRevertTarget] = useState<'all' | Episode | null>(null);
 
   // TMDb search and matching state
   const [isTmdbModalOpen, setIsTmdbModalOpen] = useState<boolean>(false);
@@ -807,6 +811,74 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     }
   };
 
+  const handleExecuteRevertSingle = async (ep: Episode) => {
+    setIsRevertingSingle(true);
+    try {
+      const res = await api.revertEpisodeCard(
+        show.rating_key,
+        ep.season_number,
+        ep.episode_number,
+        isForceLive
+      );
+      showToast({
+        type: 'success',
+        title: 'Card Reverted',
+        message: res.message || `Reverted S${String(ep.season_number).padStart(2, '0')}E${String(ep.episode_number).padStart(2, '0')} to Plex default video frame.`
+      });
+      setRevertTarget(null);
+      setStillNonce((n) => n + 1);
+      const details = await api.getShowDetails(show.rating_key);
+      if (details?.episodes) {
+        setEpisodes(details.episodes);
+      }
+      onShowUpdated();
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Failed to Revert Card',
+        message: String(err?.message || err)
+      });
+    } finally {
+      setIsRevertingSingle(false);
+    }
+  };
+
+  const handleExecuteRevertAll = async () => {
+    setIsRevertingAll(true);
+    try {
+      const res = await api.revertShowCards(show.rating_key, isForceLive);
+      showToast({
+        type: 'success',
+        title: 'Cards Reverted',
+        message: res.message || `Reverted ${res.reverted_count} episode cards to Plex default frames.`
+      });
+      setRevertTarget(null);
+      setStillNonce((n) => n + 1);
+      const details = await api.getShowDetails(show.rating_key);
+      if (details?.episodes) {
+        setEpisodes(details.episodes);
+      }
+      onShowUpdated();
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Failed to Revert Cards',
+        message: String(err?.message || err)
+      });
+    } finally {
+      setIsRevertingAll(false);
+    }
+  };
+
+  const handleConfirmRevert = async () => {
+    if (!revertTarget) return;
+    if (revertTarget === 'all') {
+      await handleExecuteRevertAll();
+    } else {
+      await handleExecuteRevertSingle(revertTarget);
+    }
+  };
+
   const activeDisplayUrl = isShowingMediux ? (currentEpMediuxCardUrl || null) : (previewUrl || null);
 
   return (
@@ -829,6 +901,8 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           onApplyCards={handleApply}
           onExportZip={handleExportZip}
           isExportingZip={isExportingZip}
+          onRevertAll={() => setRevertTarget('all')}
+          isRevertingAll={isRevertingAll}
         />
 
         {/* Modal Body: Responsive flex stack on mobile, 2 columns on desktop */}
@@ -856,6 +930,8 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
             }}
             onApplySingleCard={handleApplySingle}
             isApplyingSingle={isApplyingSingle}
+            onRevertSingleCard={currentEp ? () => setRevertTarget(currentEp) : undefined}
+            isRevertingSingle={isRevertingSingle}
             testMode={testMode}
             isForceLive={isForceLive}
           />
@@ -926,6 +1002,16 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         activeShowTitle={activeShow.title}
         handlePlexFixMatch={handlePlexFixMatch}
         isFixingPlexMatch={isFixingPlexMatch}
+      />
+
+      {/* Revert Confirmation Dialog (Single Episode or All Episodes) */}
+      <RevertConfirmModal
+        isOpen={revertTarget !== null}
+        onClose={() => setRevertTarget(null)}
+        onConfirm={handleConfirmRevert}
+        showTitle={activeShow.title}
+        episode={revertTarget && revertTarget !== 'all' ? revertTarget : null}
+        isReverting={isRevertingAll || isRevertingSingle}
       />
     </div>
   );

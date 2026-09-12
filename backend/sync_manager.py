@@ -195,9 +195,19 @@ class SyncManager:
             return logo
         return None
 
-    def scan_and_index_library(self):
+    def scan_and_index_library(self, target_library: Optional[str] = None):
         """Scan all TV shows from Plex and store in database. Cross-references TVDB and TMDb IDs automatically."""
-        shows = self.plex.get_all_shows()
+        if target_library and str(target_library).lower() == "all":
+            all_sections = self.plex.get_tv_sections()
+            shows = []
+            for sec in all_sections:
+                try:
+                    shows.extend(self.plex.get_all_shows(target_library=sec["key"]))
+                except Exception as e:
+                    logger.warning(f"Failed to scan section {sec.get('title')}: {e}")
+        else:
+            shows = self.plex.get_all_shows(target_library=target_library)
+
         logger.info(f"Indexing {len(shows)} shows from Plex...")
         
         for s in shows:
@@ -898,4 +908,123 @@ class SyncManager:
             "title": target_ep["title"],
             "source": card_status,
             "message": f"🧪 Test Mode: Generated card saved locally to cache/test_output/" if is_test else f"Successfully updated S{season_number:02d}E{episode_number:02d} in Plex!"
+        }
+
+    def revert_episode_card(
+        self,
+        show_rating_key: str,
+        season_number: int,
+        episode_number: int,
+        force_live: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Revert an episode card back to Plex's native video frame / auto-generated thumbnail.
+        Clears local still overrides, deletes the uploaded poster from Plex, unlocks the thumb,
+        and sets local card_source to 'plex_native'.
+        """
+        from backend.db import delete_episode_still_override
+        # 1. Ignore events on listener during revert
+        try:
+            from backend.plex_listener import plex_listener
+            plex_listener.ignore_show(show_rating_key, duration=30.0)
+        except Exception:
+            pass
+
+        # 2. Delete any custom screencap override
+        delete_episode_still_override(str(show_rating_key), season_number, episode_number)
+
+        # 3. Locate episode record in DB
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT rating_key, card_url FROM episodes
+            WHERE show_rating_key = ? AND season_number = ? AND episode_number = ?
+        """, (str(show_rating_key), season_number, episode_number))
+        row = cursor.fetchone()
+
+        ep_key = str(row["rating_key"]) if row else None
+
+        # 4. If not found in DB, try fetching from Plex directly
+        if not ep_key:
+            try:
+                episodes = self.plex.get_show_episodes(str(show_rating_key))
+                target = next((e for e in episodes if e.get("season_number") == season_number and e.get("episode_number") == episode_number), None)
+                if target:
+                    ep_key = str(target["rating_key"])
+            except Exception:
+                pass
+
+        # 5. Tell Plex to delete the uploaded poster and unlock the thumb
+        if ep_key:
+            try:
+                self.plex.revert_episode_card(ep_key, force_live=force_live)
+            except Exception as e:
+                logger.warning(f"Failed to revert episode card in Plex for ep {ep_key}: {e}")
+
+        # 6. Fetch Plex's native thumbUrl
+        plex_thumb = None
+        if ep_key:
+            try:
+                ep_item = self.plex.server.fetchItem(int(ep_key))
+                plex_thumb = ep_item.thumbUrl if hasattr(ep_item, "thumbUrl") else None
+            except Exception:
+                pass
+
+        # 7. Update local DB
+        cursor.execute("""
+            UPDATE episodes
+            SET card_url = ?, card_source = 'plex_native', updated_at = CURRENT_TIMESTAMP
+            WHERE show_rating_key = ? AND season_number = ? AND episode_number = ?
+        """, (plex_thumb, str(show_rating_key), season_number, episode_number))
+        conn.commit()
+        conn.close()
+
+        # Invalidate preview cache
+        from backend.config import PREVIEWS_DIR
+        for p in PREVIEWS_DIR.glob(f"*{show_rating_key}*"):
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        return {
+            "status": "success",
+            "show_rating_key": str(show_rating_key),
+            "season_number": season_number,
+            "episode_number": episode_number,
+            "card_source": "plex_native",
+            "card_url": plex_thumb,
+            "message": f"Successfully reverted S{season_number:02d}E{episode_number:02d} to Plex default video frame."
+        }
+
+    def revert_show_cards(self, show_rating_key: str, force_live: bool = False) -> Dict[str, Any]:
+        """Revert all episodes of a show back to Plex native video frames."""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT season_number, episode_number FROM episodes
+            WHERE show_rating_key = ?
+            ORDER BY season_number ASC, episode_number ASC
+        """, (str(show_rating_key),))
+        episodes = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+
+        reverted_count = 0
+        for ep in episodes:
+            try:
+                self.revert_episode_card(
+                    show_rating_key=show_rating_key,
+                    season_number=ep["season_number"],
+                    episode_number=ep["episode_number"],
+                    force_live=force_live
+                )
+                reverted_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to revert card for S{ep['season_number']}E{ep['episode_number']}: {e}")
+
+        return {
+            "status": "success",
+            "show_rating_key": str(show_rating_key),
+            "reverted_count": reverted_count,
+            "message": f"Successfully reverted {reverted_count} episode cards to Plex default video frames."
         }

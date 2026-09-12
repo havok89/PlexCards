@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Show, AppConfig, AuthStatus, AuthUser } from './types';
+import { Show, AppConfig, AuthStatus, AuthUser, PlexLibrary } from './types';
 import { api } from './api';
 import { Navbar } from './components/Navbar';
 import { FilterBar } from './components/FilterBar';
@@ -12,6 +12,8 @@ import { Tv, Loader2 } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [shows, setShows] = useState<Show[]>([]);
+  const [libraries, setLibraries] = useState<PlexLibrary[]>([]);
+  const [activeLibrary, setActiveLibrary] = useState<string>('all');
   const [config, setConfig] = useState<AppConfig>({
     test_mode: true,
     tv_library: 'TV shows',
@@ -26,20 +28,24 @@ export const App: React.FC = () => {
   const [selectedShow, setSelectedShow] = useState<Show | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (targetLib?: string) => {
     try {
-      const [conf, showsList] = await Promise.all([
+      const [conf, libRes] = await Promise.all([
         api.getConfig(),
-        api.getShows()
+        api.getLibraries().catch(() => ({ libraries: [], active_library: 'all' }))
       ]);
       setConfig(conf);
+      setLibraries(libRes.libraries || []);
+      const libToUse = targetLib !== undefined ? targetLib : (activeLibrary || libRes.active_library || 'all');
+      setActiveLibrary(libToUse);
+      const showsList = await api.getShows(libToUse === 'all' ? undefined : libToUse);
       setShows(showsList);
     } catch (e) {
       console.error('Failed to load data:', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeLibrary]);
 
   const checkAuthAndInit = useCallback(async () => {
     try {
@@ -78,16 +84,32 @@ export const App: React.FC = () => {
 
   const { showToast } = useToast();
 
+  const handleSelectLibrary = async (key: string) => {
+    setActiveLibrary(key);
+    setLoading(true);
+    try {
+      if (key !== 'all') {
+        await api.switchLibrary(key);
+      }
+      const showsList = await api.getShows(key === 'all' ? undefined : key);
+      setShows(showsList);
+    } catch (e) {
+      console.error('Failed to switch library:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleScan = async () => {
     setIsScanning(true);
     try {
-      const res = await api.scanLibrary();
+      const res = await api.scanLibrary(activeLibrary === 'all' ? undefined : activeLibrary);
       showToast({
         type: 'success',
         title: 'Scan Complete',
         message: `Indexed ${res.indexed_shows} TV shows from your Plex server.`
       });
-      await loadData();
+      await loadData(activeLibrary);
     } catch (e) {
       showToast({
         type: 'error',
@@ -146,6 +168,9 @@ export const App: React.FC = () => {
         listenerConnected={config.listener_connected}
         currentUser={authStatus?.user}
         onLogout={authStatus?.auth_enabled ? handleLogout : undefined}
+        libraries={libraries}
+        activeLibrary={activeLibrary}
+        onSelectLibrary={handleSelectLibrary}
       />
 
       <FilterBar

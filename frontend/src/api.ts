@@ -1,8 +1,22 @@
-import { Show, Episode, StyleConfig, MediuxSet, AppConfig, AuthStatus, PinResponse, PollResponse, StillsResponse, PaletteResponse, CandidateStill } from './types';
+import { Show, Episode, StyleConfig, MediuxSet, AppConfig, AuthStatus, PinResponse, PollResponse, StillsResponse, PaletteResponse, CandidateStill, PlexLibrary } from './types';
 
 export const api = {
   async getConfig(): Promise<AppConfig> {
     const res = await fetch('/api/config');
+    return res.json();
+  },
+
+  async getLibraries(): Promise<{ libraries: PlexLibrary[]; active_library: string }> {
+    const res = await fetch('/api/plex/libraries');
+    return res.json();
+  },
+
+  async switchLibrary(libraryKey: string): Promise<{ status: string; active_library: string }> {
+    const res = await fetch('/api/plex/libraries/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ library_key: libraryKey })
+    });
     return res.json();
   },
 
@@ -22,14 +36,16 @@ export const api = {
     return res.json();
   },
 
-  async getShows(): Promise<Show[]> {
-    const res = await fetch('/api/shows');
+  async getShows(library?: string): Promise<Show[]> {
+    const url = library ? `/api/shows?library=${encodeURIComponent(library)}` : '/api/shows';
+    const res = await fetch(url);
     const data = await res.json();
     return data.shows || [];
   },
 
-  async scanLibrary(): Promise<{ indexed_shows: number }> {
-    const res = await fetch('/api/library/scan', { method: 'POST' });
+  async scanLibrary(library?: string): Promise<{ indexed_shows: number }> {
+    const url = library ? `/api/library/scan?library=${encodeURIComponent(library)}` : '/api/library/scan';
+    const res = await fetch(url, { method: 'POST' });
     return res.json();
   },
 
@@ -480,6 +496,54 @@ export const api = {
       throw new Error(msg);
     }
     return res.blob();
+  },
+
+  async revertEpisodeCard(
+    ratingKey: string,
+    seasonNumber: number,
+    episodeNumber: number,
+    forceLive: boolean = false
+  ): Promise<{ status: string; card_source: string; card_url?: string; message: string }> {
+    const res = await fetch(`/api/shows/${ratingKey}/episodes/${seasonNumber}/${episodeNumber}/revert`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force_live: forceLive })
+    });
+    if (!res.ok) {
+      let msg = `Revert card failed: status ${res.status}`;
+      try {
+        const data = await res.json();
+        if (data.detail) msg = data.detail;
+      } catch {
+        const text = await res.text();
+        if (text) msg = text;
+      }
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  async revertShowCards(
+    ratingKey: string,
+    forceLive: boolean = false
+  ): Promise<{ status: string; reverted_count: number; message: string }> {
+    const res = await fetch(`/api/shows/${ratingKey}/revert-all`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force_live: forceLive })
+    });
+    if (!res.ok) {
+      let msg = `Revert all cards failed: status ${res.status}`;
+      try {
+        const data = await res.json();
+        if (data.detail) msg = data.detail;
+      } catch {
+        const text = await res.text();
+        if (text) msg = text;
+      }
+      throw new Error(msg);
+    }
+    return res.json();
   }
 };
 

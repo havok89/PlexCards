@@ -22,7 +22,7 @@ class PlexAlertListenerDaemon:
         self._thread = None
         self._stop_event = threading.Event()
         self._connected = False
-        self._tv_section_id: Optional[str] = None
+        self._tv_section_ids: set = set()
         self._debounce_timers: Dict[str, threading.Timer] = {}
         self._ignored_shows: Dict[str, float] = {}
         self._lock = threading.Lock()
@@ -75,22 +75,23 @@ class PlexAlertListenerDaemon:
         self._connected = False
         logger.info("Stopped Plex AlertListener background daemon.")
 
-    def _resolve_tv_section_id(self):
-        """Find the numeric ID of the configured TV library section."""
+    def _resolve_tv_section_ids(self):
+        """Find the numeric IDs of all TV library sections."""
         try:
-            sec = self.plex.get_tv_section()
-            self._tv_section_id = str(sec.key)
-            logger.info(f"Target Plex TV Library: '{sec.title}' (Section ID: {self._tv_section_id})")
+            sections = self.plex.get_tv_sections()
+            self._tv_section_ids = {str(s["key"]) for s in sections}
+            titles = [s["title"] for s in sections]
+            logger.info(f"Target Plex TV Libraries: {titles} (Section IDs: {list(self._tv_section_ids)})")
         except Exception as e:
-            logger.warning(f"Could not resolve Plex TV section ID: {e}")
-            self._tv_section_id = None
+            logger.warning(f"Could not resolve Plex TV section IDs: {e}")
+            self._tv_section_ids = set()
 
     def _run_loop(self):
         """Resilient connection loop that reconnects on disconnect or error."""
         while not self._stop_event.is_set():
             try:
-                if not self._tv_section_id:
-                    self._resolve_tv_section_id()
+                if not self._tv_section_ids:
+                    self._resolve_tv_section_ids()
 
                 logger.info("Connecting to Plex notification WebSocket at %s...", self.plex.base_url)
                 self._listener = self.plex.server.startAlertListener(
@@ -140,8 +141,8 @@ class PlexAlertListenerDaemon:
             return
 
         sec_id = entry.get("sectionID")
-        # If sectionID is present and doesn't match our TV library, ignore
-        if sec_id and self._tv_section_id and str(sec_id) != str(self._tv_section_id):
+        # If sectionID is present and doesn't match any TV library, ignore
+        if sec_id and self._tv_section_ids and str(sec_id) not in self._tv_section_ids:
             return
 
         state = entry.get("state")
@@ -167,7 +168,7 @@ class PlexAlertListenerDaemon:
                 return
 
             # Verify library section
-            if self._tv_section_id and str(item.librarySectionID) != str(self._tv_section_id):
+            if self._tv_section_ids and str(item.librarySectionID) not in self._tv_section_ids:
                 return
 
             item_type = getattr(item, 'type', None)

@@ -13,7 +13,7 @@ from backend.config import BASE_DIR, HOST, PORT, CUSTOM_FONTS_DIR, POSTERS_DIR, 
 from backend.db import (
     init_db, get_all_shows, get_show, update_show_mode, update_show_style,
     get_setting, set_setting, get_all_settings, bulk_update_show_modes,
-    update_show_tmdb_id
+    update_show_tmdb_id, get_all_indexed_libraries
 )
 from backend.sync_manager import SyncManager
 from backend.ai_styler import AIStyler
@@ -246,10 +246,53 @@ def get_font_file(filename: str):
 
     raise HTTPException(status_code=404, detail="Font file not found")
 
+@app.get("/api/plex/libraries")
+def get_plex_libraries():
+    """List all TV libraries available from Plex Media Server with fallback to indexed libraries."""
+    libraries = []
+    try:
+        libraries = sync_mgr.plex.get_tv_sections()
+    except Exception as e:
+        logger.warning(f"Could not fetch TV sections live from Plex: {e}")
+        indexed = get_all_indexed_libraries()
+        for idx in indexed:
+            libraries.append({
+                "key": str(idx["library_section_id"]),
+                "title": idx["library_name"],
+                "type": "show"
+            })
+
+    active_lib = get_setting("active_plex_library", None)
+    if not active_lib and libraries:
+        # Default to configured PLEX_TV_LIBRARY if found, else first
+        matching = [lib for lib in libraries if lib["title"].lower() == config.PLEX_TV_LIBRARY.lower()]
+        active_lib = matching[0]["key"] if matching else libraries[0]["key"]
+        set_setting("active_plex_library", str(active_lib))
+
+    return {
+        "libraries": libraries,
+        "active_library": active_lib
+    }
+
+@app.post("/api/plex/libraries/switch")
+def switch_plex_library(payload: dict = Body(...)):
+    """Switch active Plex TV library."""
+    library_key = str(payload.get("library_key", "")).strip()
+    if not library_key:
+        raise HTTPException(status_code=400, detail="library_key is required")
+
+    set_setting("active_plex_library", library_key)
+    logger.info(f"Switched active Plex library to: {library_key}")
+    return {"status": "success", "active_library": library_key}
+
 @app.get("/api/shows")
-def list_shows():
+def list_shows(library: Optional[str] = None):
     """List all indexed TV shows with status and card statistics."""
-    shows = get_all_shows()
+    active_filter = None
+    if library and str(library).lower() != "all":
+        active_filter = str(library)
+
+    shows = get_all_shows(library_filter=active_filter)
     for s in shows:
         if s.get("poster_url"):
             s["poster_url"] = f"/api/shows/{s['rating_key']}/poster.jpg"
@@ -330,9 +373,10 @@ def get_show_poster(rating_key: str, request: Request):
         raise HTTPException(status_code=500, detail="Failed to fetch poster")
 
 @app.post("/api/library/scan")
-def scan_library():
-    """Scan Plex server and index all shows."""
-    count = sync_mgr.scan_and_index_library()
+def scan_library(library: Optional[str] = None):
+    """Scan Plex server and index all shows for the specified or active library."""
+    target = library if library is not None else get_setting("active_plex_library", None)
+    count = sync_mgr.scan_and_index_library(target_library=target)
     return {"status": "success", "indexed_shows": count}
 
 @app.get("/api/shows/{rating_key}")
@@ -1216,6 +1260,44 @@ def apply_card_to_episode(
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         logger.error(f"Failed to apply card to S{season_number}E{episode_number}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/shows/{rating_key}/episodes/{season_number}/{episode_number}/revert")
+def revert_card_to_native(
+    rating_key: str,
+    season_number: int,
+    episode_number: int,
+    payload: dict = Body(default={})
+):
+    """Revert episode card back to Plex's native auto-generated video frame."""
+    force_live = payload.get("force_live", False)
+    try:
+        res = sync_mgr.revert_episode_card(
+            show_rating_key=rating_key,
+            season_number=season_number,
+            episode_number=episode_number,
+            force_live=force_live
+        )
+        return res
+    except Exception as e:
+        logger.error(f"Failed to revert card for S{season_number}E{episode_number}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/shows/{rating_key}/revert-all")
+def revert_all_cards_to_native(
+    rating_key: str,
+    payload: dict = Body(default={})
+):
+    """Revert all episode cards for a show back to Plex's native video frames."""
+    force_live = payload.get("force_live", False)
+    try:
+        res = sync_mgr.revert_show_cards(
+            show_rating_key=rating_key,
+            force_live=force_live
+        )
+        return res
+    except Exception as e:
+        logger.error(f"Failed to revert all cards for show {rating_key}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/shows/{rating_key}/ai-style")

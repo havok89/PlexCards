@@ -5,7 +5,7 @@ import { useToast } from '../../context/ToastContext';
 import {
   Eye, Zap, Wand2, Loader2, Sparkles, FlaskConical,
   Tv, Split, SlidersHorizontal, ChevronLeft, ChevronRight,
-  Film, Check, Send, Upload, Trash2
+  Film, Check, Send, Upload, Trash2, RotateCcw
 } from 'lucide-react';
 
 interface StudioPreviewCanvasProps {
@@ -27,6 +27,8 @@ interface StudioPreviewCanvasProps {
   onStillChanged?: () => void;
   onApplySingleCard?: () => void;
   isApplyingSingle?: boolean;
+  onRevertSingleCard?: () => void;
+  isRevertingSingle?: boolean;
   testMode?: boolean;
   isForceLive?: boolean;
 }
@@ -50,6 +52,8 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
   onStillChanged,
   onApplySingleCard,
   isApplyingSingle,
+  onRevertSingleCard,
+  isRevertingSingle,
   testMode,
   isForceLive
 }) => {
@@ -886,38 +890,59 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
             </span>
           </div>
 
-          {onApplySingleCard && (
-            <button
-              type="button"
-              onClick={onApplySingleCard}
-              disabled={isApplyingSingle || isEpisodesLoading}
-              className={`font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5 shadow shrink-0 ${
-                testMode && !isForceLive
-                  ? 'bg-amber-500 hover:bg-amber-400 text-dark-950'
-                  : 'bg-brand-500 hover:bg-brand-400 text-dark-950 shadow-brand-500/20'
-              } disabled:opacity-50`}
-              title={
-                testMode && !isForceLive
-                  ? `Simulate title card generation for S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')} (Test Mode)`
-                  : `Upload title card for S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')} directly to Plex`
-              }
-            >
-              {isApplyingSingle ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-              ) : testMode && !isForceLive ? (
-                <Sparkles className="w-3.5 h-3.5 shrink-0" />
-              ) : (
-                <Send className="w-3.5 h-3.5 shrink-0" />
-              )}
-              <span className="whitespace-nowrap">
-                {isApplyingSingle
-                  ? 'Updating Card...'
-                  : testMode && !isForceLive
-                  ? `Simulate This Card (S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')})`
-                  : `Update This Card (S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')})`}
-              </span>
-            </button>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {onRevertSingleCard && (
+              <button
+                type="button"
+                onClick={onRevertSingleCard}
+                disabled={isRevertingSingle || isApplyingSingle || isEpisodesLoading}
+                className="bg-dark-800 hover:bg-dark-750 text-gray-300 hover:text-white border border-gray-700 font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5 shadow disabled:opacity-50"
+                title={`Revert S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')} back to Plex default video frame`}
+              >
+                {isRevertingSingle ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400 shrink-0" />
+                ) : (
+                  <RotateCcw className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                )}
+                <span className="whitespace-nowrap">
+                  {isRevertingSingle ? 'Reverting...' : 'Revert Card'}
+                </span>
+              </button>
+            )}
+
+            {onApplySingleCard && (
+              <button
+                type="button"
+                onClick={onApplySingleCard}
+                disabled={isApplyingSingle || isRevertingSingle || isEpisodesLoading}
+                className={`font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5 shadow shrink-0 ${
+                  testMode && !isForceLive
+                    ? 'bg-amber-500 hover:bg-amber-400 text-dark-950'
+                    : 'bg-brand-500 hover:bg-brand-400 text-dark-950 shadow-brand-500/20'
+                } disabled:opacity-50`}
+                title={
+                  testMode && !isForceLive
+                    ? `Simulate title card generation for S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')} (Test Mode)`
+                    : `Upload title card for S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')} directly to Plex`
+                }
+              >
+                {isApplyingSingle ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                ) : testMode && !isForceLive ? (
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                ) : (
+                  <Send className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span className="whitespace-nowrap">
+                  {isApplyingSingle
+                    ? 'Updating Card...'
+                    : testMode && !isForceLive
+                    ? `Simulate Card`
+                    : `Update Card`}
+                </span>
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

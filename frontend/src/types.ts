@@ -44,6 +44,14 @@ export interface Show {
   logo_monochrome?: number;
   ai_prompt?: string;
   has_custom_style?: number;
+  library_section_id?: string;
+  library_name?: string;
+}
+
+export interface PlexLibrary {
+  key: string;
+  title: string;
+  type: string;
 }
 
 export interface Episode {
@@ -52,6 +60,8 @@ export interface Episode {
   episode_number: number;
   title: string;
   thumb_url?: string;
+  card_source?: string;
+  card_url?: string;
 }
 
 export interface StyleConfig {

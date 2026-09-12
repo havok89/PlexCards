@@ -1,7 +1,7 @@
 import json
 import sqlite3
 from typing import Dict, List, Optional, Any
-from backend.config import DB_PATH
+from backend.config import DB_PATH, PLEX_TV_LIBRARY
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -24,9 +24,11 @@ def init_db():
         backdrop_url TEXT,
         total_seasons INTEGER DEFAULT 0,
         total_episodes INTEGER DEFAULT 0,
-        mode TEXT DEFAULT 'ignored', -- 'auto', 'generator_only', 'mediux_locked', 'ignored'
+        mode TEXT DEFAULT 'auto', -- 'auto', 'generator_only', 'mediux_locked', 'ignored'
         mediux_set_url TEXT,
         status TEXT DEFAULT 'Returning Series',
+        library_section_id TEXT,
+        library_name TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
@@ -39,6 +41,18 @@ def init_db():
         cursor.execute("ALTER TABLE shows ADD COLUMN status TEXT DEFAULT 'Returning Series'")
     if "tvdb_id" not in show_columns:
         cursor.execute("ALTER TABLE shows ADD COLUMN tvdb_id INTEGER")
+    if "library_section_id" not in show_columns:
+        cursor.execute("ALTER TABLE shows ADD COLUMN library_section_id TEXT")
+    if "library_name" not in show_columns:
+        cursor.execute("ALTER TABLE shows ADD COLUMN library_name TEXT")
+
+    # Backfill legacy shows where library_section_id is NULL
+    cursor.execute("""
+        UPDATE shows 
+        SET library_section_id = COALESCE((SELECT value FROM settings WHERE key = 'active_plex_library'), '1'),
+            library_name = ?
+        WHERE library_section_id IS NULL
+    """, (PLEX_TV_LIBRARY,))
 
     # Show styling configuration (for generator)
     cursor.execute("""
@@ -262,11 +276,12 @@ def upsert_show(show_data: Dict[str, Any]):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-    INSERT INTO shows (rating_key, tmdb_id, tvdb_id, title, year, poster_url, backdrop_url, total_seasons, total_episodes, mode, mediux_set_url, status, updated_at)
+    INSERT INTO shows (rating_key, tmdb_id, tvdb_id, title, year, poster_url, backdrop_url, total_seasons, total_episodes, mode, mediux_set_url, status, library_section_id, library_name, updated_at)
     VALUES (:rating_key, :tmdb_id, :tvdb_id, :title, :year, :poster_url, :backdrop_url, :total_seasons, :total_episodes, 
             COALESCE((SELECT mode FROM shows WHERE rating_key = :rating_key), :default_mode),
             COALESCE((SELECT mediux_set_url FROM shows WHERE rating_key = :rating_key), NULL),
             COALESCE(:status, (SELECT status FROM shows WHERE rating_key = :rating_key), 'Returning Series'),
+            :library_section_id, :library_name,
             CURRENT_TIMESTAMP)
     ON CONFLICT(rating_key) DO UPDATE SET
         tmdb_id = COALESCE(excluded.tmdb_id, shows.tmdb_id),
@@ -278,6 +293,8 @@ def upsert_show(show_data: Dict[str, Any]):
         total_seasons = excluded.total_seasons,
         total_episodes = excluded.total_episodes,
         status = COALESCE(excluded.status, shows.status),
+        library_section_id = COALESCE(excluded.library_section_id, shows.library_section_id),
+        library_name = COALESCE(excluded.library_name, shows.library_name),
         updated_at = CURRENT_TIMESTAMP
     """, {
         "rating_key": str(show_data["rating_key"]),
@@ -290,7 +307,9 @@ def upsert_show(show_data: Dict[str, Any]):
         "total_seasons": show_data.get("total_seasons", 0),
         "total_episodes": show_data.get("total_episodes", 0),
         "default_mode": default_mode,
-        "status": show_data.get("status")
+        "status": show_data.get("status"),
+        "library_section_id": str(show_data.get("library_section_id")) if show_data.get("library_section_id") else None,
+        "library_name": show_data.get("library_name")
     })
     
     # Ensure default style exists (use user-configured default generator style)
@@ -386,10 +405,10 @@ def get_show(rating_key: str) -> Optional[Dict[str, Any]]:
     conn.close()
     return dict(row) if row else None
 
-def get_all_shows() -> List[Dict[str, Any]]:
+def get_all_shows(library_filter: Optional[str] = None) -> List[Dict[str, Any]]:
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("""
+    query = """
     SELECT s.*, 
            st.layout, st.text_position, st.font_family, st.subheading_font_family, st.font_color, st.subheading_color, 
            st.gradient_side, st.gradient_width_pct, st.gradient_opacity_pct, 
@@ -414,11 +433,31 @@ def get_all_shows() -> List[Dict[str, Any]]:
            (SELECT COUNT(*) FROM episodes e WHERE e.show_rating_key = s.rating_key AND e.card_source LIKE 'generator%') AS generator_cards_count
     FROM shows s
     LEFT JOIN show_styles st ON s.rating_key = st.rating_key
-    ORDER BY s.title ASC
-    """)
+    """
+    params = []
+    if library_filter and library_filter.lower() != "all":
+        query += " WHERE (s.library_section_id = ? OR s.library_name = ?)"
+        params.extend([str(library_filter), str(library_filter)])
+    query += " ORDER BY s.title ASC"
+    cursor.execute(query, params)
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+def get_all_indexed_libraries() -> List[Dict[str, Any]]:
+    """Return all distinct libraries present in the local database."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT library_section_id, library_name, COUNT(*) as show_count
+        FROM shows
+        WHERE library_name IS NOT NULL
+        GROUP BY library_section_id, library_name
+        ORDER BY library_name ASC
+    """)
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
 
 def update_show_mode(rating_key: str, mode: str, mediux_set_url: Optional[str] = None):
     conn = get_db()
