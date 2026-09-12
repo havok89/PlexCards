@@ -1,7 +1,7 @@
 import { Episode, Show } from '../../types';
 import {
   Sliders, ExternalLink, Edit2, AlertTriangle,
-  RefreshCw, X, Loader2, Sparkles, Send
+  RefreshCw, X, Loader2, Sparkles, Send, Download
 } from 'lucide-react';
 
 interface StudioHeaderProps {
@@ -18,6 +18,8 @@ interface StudioHeaderProps {
   isApplying: boolean;
   applyProgress: { current: number; total: number; label?: string } | null;
   onApplyCards: () => void;
+  onExportZip?: () => void;
+  isExportingZip?: boolean;
 }
 
 export const StudioHeader: React.FC<StudioHeaderProps> = ({
@@ -33,7 +35,9 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   onToggleForceLive,
   isApplying,
   applyProgress,
-  onApplyCards
+  onApplyCards,
+  onExportZip,
+  isExportingZip
 }) => {
   return (
     <div className="px-3 sm:px-6 py-2.5 sm:py-4 border-b border-gray-800 bg-dark-850 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3 shrink-0">
@@ -196,6 +200,25 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             />
             <span>Live Upload</span>
           </label>
+        )}
+
+        {/* Action Button: Export Cards as .zip Package */}
+        {onExportZip && (
+          <button
+            type="button"
+            onClick={onExportZip}
+            disabled={isExportingZip || isApplying}
+            className="bg-dark-800 hover:bg-dark-750 text-gray-200 hover:text-white border border-gray-700 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition shrink-0 shadow disabled:opacity-40"
+            title="Download all 1080p title cards for this show packaged in a .zip archive"
+          >
+            {isExportingZip ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400 shrink-0" />
+            ) : (
+              <Download className="w-3.5 h-3.5 text-brand-400 shrink-0" />
+            )}
+            <span className="hidden sm:inline">{isExportingZip ? 'Exporting...' : 'Export ZIP'}</span>
+            <span className="sm:hidden">{isExportingZip ? '...' : 'ZIP'}</span>
+          </button>
         )}
 
         {/* Action Button: Apply Cards to Plex */}

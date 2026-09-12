@@ -1,6 +1,7 @@
 import logging
 import base64
 import io
+import time
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Request, Response
@@ -8,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from backend import config
-from backend.config import BASE_DIR, HOST, PORT, CUSTOM_FONTS_DIR, POSTERS_DIR
+from backend.config import BASE_DIR, HOST, PORT, CUSTOM_FONTS_DIR, POSTERS_DIR, FONTS_DIR, STILLS_DIR, PREVIEWS_DIR
 from backend.db import (
     init_db, get_all_shows, get_show, update_show_mode, update_show_style,
     get_setting, set_setting, get_all_settings, bulk_update_show_modes,
@@ -43,7 +44,7 @@ app.add_middleware(
 async def auth_middleware(request: Request, call_next):
     """Intercept requests to protect /api/ routes when ENABLE_AUTH is active."""
     path = request.url.path
-    if config.ENABLE_AUTH and path.startswith("/api/") and not path.startswith("/api/auth") and path != "/api/config" and "/poster" not in path:
+    if config.ENABLE_AUTH and path.startswith("/api/") and not path.startswith("/api/auth") and path != "/api/config" and "/poster" not in path and not path.startswith("/api/fonts/file"):
         token = request.cookies.get(SESSION_COOKIE_NAME)
         if not token:
             auth_header = request.headers.get("Authorization")
@@ -228,6 +229,23 @@ async def upload_custom_font(file: UploadFile = File(...)):
     logger.info(f"✓ Saved uploaded custom font to {dest}")
     return {"status": "success", "font_name": dest.stem, "filename": file.filename}
 
+@app.get("/api/fonts/file/{filename}")
+def get_font_file(filename: str):
+    """Serve font file (.ttf / .otf) for live client-side typography previews in the UI."""
+    from fastapi.responses import FileResponse
+    safe_name = Path(filename).name
+    custom_path = CUSTOM_FONTS_DIR / safe_name
+    if custom_path.exists() and custom_path.is_file():
+        media_type = "font/otf" if safe_name.endswith(".otf") else "font/ttf"
+        return FileResponse(custom_path, media_type=media_type, headers={"Cache-Control": "public, max-age=31536000"})
+
+    font_path = FONTS_DIR / safe_name
+    if font_path.exists() and font_path.is_file():
+        media_type = "font/otf" if safe_name.endswith(".otf") else "font/ttf"
+        return FileResponse(font_path, media_type=media_type, headers={"Cache-Control": "public, max-age=31536000"})
+
+    raise HTTPException(status_code=404, detail="Font file not found")
+
 @app.get("/api/shows")
 def list_shows():
     """List all indexed TV shows with status and card statistics."""
@@ -353,7 +371,13 @@ def get_show_details(rating_key: str):
         except Exception:
             pass
 
-    episodes = sync_mgr.plex.get_show_episodes(rating_key)
+    episodes = []
+    try:
+        episodes = sync_mgr.plex.get_show_episodes(rating_key)
+    except Exception as e:
+        logger.warning(f"Could not fetch episodes from Plex API for show {rating_key}: {e}. Falling back to local DB.")
+        from backend.db import get_episodes_for_show
+        episodes = get_episodes_for_show(rating_key)
     tmdb_id = show.get("tmdb_id")
 
     # Fetch MediUX sets for this show
@@ -797,11 +821,31 @@ def get_episode_stills(rating_key: str, season_number: int, episode_number: int)
     else:
         stills = tmdb_stills + tvdb_stills
 
+    custom_filename = f"custom_{rating_key}_s{season_number}e{episode_number}.jpg"
+    custom_file = STILLS_DIR / custom_filename
     override = get_episode_still_override(rating_key, season_number, episode_number)
+
+    if custom_file.exists():
+        custom_key = f"custom:{custom_filename}"
+        stills.insert(0, {
+            "file_path": custom_key,
+            "thumb_url": f"/api/shows/{rating_key}/raw-still?season_number={season_number}&episode_number={episode_number}&custom=1",
+            "full_url": f"/api/shows/{rating_key}/raw-still?season_number={season_number}&episode_number={episode_number}&custom=1",
+            "width": 1920,
+            "height": 1080,
+            "aspect_ratio": 1.78,
+            "is_16_9": True,
+            "vote_average": 10.0,
+            "vote_count": 1,
+            "quality_score": 100,
+            "is_top_pick": False,
+            "is_selected": (override == custom_key or override == custom_filename),
+            "provider": "custom"
+        })
 
     for s in stills:
         if override:
-            s["is_selected"] = (s["file_path"] == override)
+            s["is_selected"] = (s["file_path"] == override or (s.get("provider") == "custom" and override.startswith("custom:")))
         else:
             s["is_selected"] = s.get("is_top_pick", False)
 
@@ -827,7 +871,10 @@ def select_episode_still(rating_key: str, season_number: int, episode_number: in
 
     # Pre-download specific still file in background
     cached_path = None
-    if (still_path.startswith("http://") or still_path.startswith("https://")) and show.get("tvdb_id"):
+    if still_path.startswith("custom:") or still_path.startswith("custom_"):
+        clean_name = still_path.replace("custom:", "").split("?")[0]
+        cached_path = STILLS_DIR / clean_name
+    elif (still_path.startswith("http://") or still_path.startswith("https://")) and show.get("tvdb_id"):
         cached_path = tvdb.get_episode_still(int(show["tvdb_id"]), season_number, episode_number, specific_still_url=still_path)
     elif show.get("tmdb_id"):
         cached_path = tmdb.get_episode_still(int(show["tmdb_id"]), season_number, episode_number, specific_still_path=still_path)
@@ -839,6 +886,221 @@ def select_episode_still(rating_key: str, season_number: int, episode_number: in
         "episode_number": episode_number,
         "cached": bool(cached_path and cached_path.exists())
     }
+
+@app.post("/api/shows/{rating_key}/episodes/{season_number}/{episode_number}/custom-still")
+async def upload_custom_still(
+    rating_key: str,
+    season_number: int,
+    episode_number: int,
+    file: UploadFile = File(...)
+):
+    """Upload a custom screencap / still frame for an episode."""
+    from PIL import Image
+    from backend.db import set_episode_still_override
+
+    show = get_show(rating_key)
+    if not show:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
+
+    try:
+        img = Image.open(io.BytesIO(content))
+        img = img.convert("RGB")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid image file: {e}")
+
+    # Resize to 1920x1080 if not already
+    orig_w, orig_h = img.size
+    if orig_w != 1920 or orig_h != 1080:
+        img = img.resize((1920, 1080), Image.Resampling.LANCZOS)
+
+    custom_filename = f"custom_{rating_key}_s{season_number}e{episode_number}.jpg"
+    dest_path = STILLS_DIR / custom_filename
+    img.save(dest_path, "JPEG", quality=95)
+
+    custom_key = f"custom:{custom_filename}"
+    set_episode_still_override(rating_key, season_number, episode_number, custom_key)
+
+    # Invalidate preview cache for this rating_key
+    for p in PREVIEWS_DIR.glob(f"*{rating_key}*"):
+        try:
+            p.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    t_nonce = int(time.time())
+    return {
+        "status": "success",
+        "still_path": custom_key,
+        "season_number": season_number,
+        "episode_number": episode_number,
+        "still": {
+            "file_path": custom_key,
+            "thumb_url": f"/api/shows/{rating_key}/raw-still?season_number={season_number}&episode_number={episode_number}&t={t_nonce}",
+            "full_url": f"/api/shows/{rating_key}/raw-still?season_number={season_number}&episode_number={episode_number}&t={t_nonce}",
+            "width": 1920,
+            "height": 1080,
+            "aspect_ratio": 1.78,
+            "is_16_9": True,
+            "vote_average": 10.0,
+            "vote_count": 1,
+            "quality_score": 100,
+            "is_top_pick": False,
+            "is_selected": True,
+            "provider": "custom"
+        }
+    }
+
+@app.delete("/api/shows/{rating_key}/episodes/{season_number}/{episode_number}/custom-still")
+def delete_custom_still(
+    rating_key: str,
+    season_number: int,
+    episode_number: int
+):
+    """Delete a custom uploaded screencap / still frame for an episode and revert to default."""
+    from backend.db import get_episode_still_override, delete_episode_still_override
+
+    show = get_show(rating_key)
+    if not show:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    custom_filename = f"custom_{rating_key}_s{season_number}e{episode_number}.jpg"
+    dest_path = STILLS_DIR / custom_filename
+    if dest_path.exists():
+        try:
+            dest_path.unlink(missing_ok=True)
+        except Exception as e:
+            logger.warning(f"Could not remove custom still file {dest_path}: {e}")
+
+    # If active override was this custom still, clear it from SQLite
+    override = get_episode_still_override(rating_key, season_number, episode_number)
+    if override and (override.startswith("custom:") or override.startswith("custom_") or custom_filename in override):
+        delete_episode_still_override(rating_key, season_number, episode_number)
+
+    # Invalidate preview cache for this rating_key
+    for p in PREVIEWS_DIR.glob(f"*{rating_key}*"):
+        try:
+            p.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    return {
+        "status": "success",
+        "message": f"Custom screencap for S{season_number:02d}E{episode_number:02d} removed."
+    }
+
+@app.get("/api/shows/{rating_key}/export-zip")
+def export_show_cards_zip(
+    rating_key: str,
+    source: str = "auto"
+):
+    """Package and export all 1080p title cards for a show as a .zip archive."""
+    import zipfile
+    import re
+    import requests
+
+    show = get_show(rating_key)
+    if not show:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    clean_show_title = re.sub(r'[\\/*?:"<>|]', "", show["title"]).strip()
+    episodes = []
+    try:
+        episodes = sync_mgr.plex.get_show_episodes(rating_key)
+    except Exception as e:
+        logger.warning(f"Could not fetch live Plex episodes for export-zip: {e}. Falling back to DB.")
+        from backend.db import get_episodes_for_show
+        episodes = get_episodes_for_show(rating_key)
+    if not episodes:
+        raise HTTPException(status_code=404, detail="No episodes found for show")
+
+    # Sort episodes by season and episode number
+    episodes = sorted(episodes, key=lambda ep: (ep.get("season_number", 0), ep.get("episode_number", 0)))
+
+    # Fetch MediUX set files if applicable
+    mediux_cards_map = {}
+    if source in ("mediux", "auto") and show.get("mediux_set_id"):
+        try:
+            set_data = mediux.get_set(show["mediux_set_id"])
+            if set_data:
+                for f in set_data.get("files", []):
+                    if f.get("fileType") == "title_card" and f.get("season_number") is not None and f.get("episode_number") is not None:
+                        s_key = (f["season_number"], f["episode_number"])
+                        img_id = f.get("id")
+                        if img_id:
+                            mediux_cards_map[s_key] = f"https://images.mediux.pro/{img_id}.jpg"
+        except Exception as e:
+            logger.warning(f"Error fetching MediUX cards for zip export: {e}")
+
+    zip_buffer = io.BytesIO()
+    exported_count = 0
+    logo_path = sync_mgr.get_show_logo_path(show)
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for ep in episodes:
+            s_num = ep.get("season_number")
+            e_num = ep.get("episode_number")
+            ep_title = ep.get("title", f"Episode {e_num}")
+            if s_num is None or e_num is None:
+                continue
+
+            clean_ep_title = re.sub(r'[\\/*?:"<>|]', "", ep_title).strip()
+            # Standard Plex title card naming inside show folder
+            arcname = f"{clean_show_title}/S{s_num:02d}E{e_num:02d} - {clean_ep_title}.jpg"
+
+            # Check if MediUX card should be used
+            m_url = mediux_cards_map.get((s_num, e_num))
+            card_bytes = None
+
+            if (source == "mediux" or (source == "auto" and m_url)) and m_url:
+                try:
+                    r = requests.get(m_url, timeout=10)
+                    if r.status_code == 200:
+                        card_bytes = r.content
+                except Exception as e:
+                    logger.warning(f"Failed to fetch MediUX card for {arcname}: {e}")
+
+            # If no MediUX card or generator preferred, render card locally
+            if not card_bytes:
+                try:
+                    still_file = sync_mgr.get_episode_backdrop_still(show, ep)
+                    if still_file and still_file.exists():
+                        card_img = sync_mgr.renderer.render(
+                            base_image_path=still_file,
+                            episode_title=ep_title,
+                            season_num=s_num,
+                            episode_num=e_num,
+                            style_config=show,
+                            logo_image_path=logo_path
+                        )
+                        img_byte_arr = io.BytesIO()
+                        card_img.save(img_byte_arr, format="JPEG", quality=95)
+                        card_bytes = img_byte_arr.getvalue()
+                except Exception as e:
+                    logger.error(f"Failed to render title card for {arcname}: {e}")
+
+            if card_bytes:
+                zip_file.writestr(arcname, card_bytes)
+                exported_count += 1
+
+    if exported_count == 0:
+        raise HTTPException(status_code=500, detail="Failed to generate or retrieve any title cards for export")
+
+    zip_buffer.seek(0)
+    zip_bytes = zip_buffer.getvalue()
+
+    filename = f"{clean_show_title}_Title_Cards.zip"
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(zip_bytes))
+        }
+    )
 
 @app.post("/api/shows/{rating_key}/auto-pick-stills")
 def auto_pick_stills(rating_key: str, payload: dict = Body(default={})):

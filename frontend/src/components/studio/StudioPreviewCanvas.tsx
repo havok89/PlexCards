@@ -5,7 +5,7 @@ import { useToast } from '../../context/ToastContext';
 import {
   Eye, Zap, Wand2, Loader2, Sparkles, FlaskConical,
   Tv, Split, SlidersHorizontal, ChevronLeft, ChevronRight,
-  Film, Check, Send
+  Film, Check, Send, Upload, Trash2
 } from 'lucide-react';
 
 interface StudioPreviewCanvasProps {
@@ -58,11 +58,14 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
   // Modes: 'single' card or 'shelf' (2 in a row simulator)
   const [viewMode, setViewMode] = useState<'single' | 'shelf'>('single');
 
-  // Candidate TMDb stills
+  // Candidate TMDb/TVDB & Custom stills
   const [candidateStills, setCandidateStills] = useState<CandidateStill[]>([]);
   const [selectedStillPath, setSelectedStillPath] = useState<string | null>(null);
   const [isStillsLoading, setIsStillsLoading] = useState<boolean>(false);
   const [isAutoPicking, setIsAutoPicking] = useState<boolean>(false);
+  const [isUploadingStill, setIsUploadingStill] = useState<boolean>(false);
+  const [isDragOverStills, setIsDragOverStills] = useState<boolean>(false);
+  const stillFileInputRef = useRef<HTMLInputElement>(null);
 
   // Before/After comparison slider
   const [isCompareMode, setIsCompareMode] = useState<boolean>(false);
@@ -72,9 +75,9 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
   const [isRawStillLoading, setIsRawStillLoading] = useState<boolean>(false);
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
-  // Fetch candidate stills from TMDb when episode or show changes
+  // Fetch candidate stills (TMDb, TVDB, and Custom) when episode or show changes
   useEffect(() => {
-    if (!currentEp || !show.tmdb_id) {
+    if (!currentEp) {
       setCandidateStills([]);
       setSelectedStillPath(null);
       return;
@@ -99,7 +102,86 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
     return () => {
       active = false;
     };
-  }, [show.rating_key, show.tmdb_id, currentEp?.season_number, currentEp?.episode_number]);
+  }, [show.rating_key, show.tmdb_id, show.tvdb_id, currentEp?.season_number, currentEp?.episode_number]);
+
+  const handleUploadCustomStill = async (file: File) => {
+    if (!currentEp) return;
+    if (!file.type.startsWith('image/')) {
+      showToast({
+        type: 'error',
+        title: 'Invalid File Format',
+        message: 'Please select an image file (e.g. JPG, PNG, WEBP).'
+      });
+      return;
+    }
+
+    setIsUploadingStill(true);
+    try {
+      const res = await api.uploadCustomStill(
+        show.rating_key,
+        currentEp.season_number,
+        currentEp.episode_number,
+        file
+      );
+      showToast({
+        type: 'success',
+        title: 'Custom Screencap Uploaded',
+        message: `Uploaded custom frame for S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')}.`
+      });
+
+      setSelectedStillPath(res.still_path);
+      setCandidateStills((prev) => {
+        const filtered = prev.filter((s) => s.provider !== 'custom');
+        return [res.still, ...filtered];
+      });
+      setRawStillUrl(null);
+      onStillChanged?.();
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Upload Failed',
+        message: String(err?.message || err)
+      });
+    } finally {
+      setIsUploadingStill(false);
+    }
+  };
+
+  const handleDeleteCustomStill = async (still: CandidateStill) => {
+    if (!currentEp) return;
+    try {
+      await api.deleteCustomStill(show.rating_key, currentEp.season_number, currentEp.episode_number);
+      showToast({
+        type: 'success',
+        title: 'Custom Screencap Removed',
+        message: `Removed custom frame for S${String(currentEp.season_number).padStart(2, '0')}E${String(currentEp.episode_number).padStart(2, '0')}.`
+      });
+
+      const remainingStills = candidateStills.filter((s) => s.file_path !== still.file_path);
+      setCandidateStills(remainingStills);
+
+      if (selectedStillPath === still.file_path) {
+        const nextStill = remainingStills[0]?.file_path || null;
+        setSelectedStillPath(nextStill);
+        if (nextStill) {
+          await api.selectEpisodeStill(
+            show.rating_key,
+            currentEp.season_number,
+            currentEp.episode_number,
+            nextStill
+          );
+        }
+      }
+      setRawStillUrl(null);
+      onStillChanged?.();
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Failed to Delete Still',
+        message: String(err?.message || err)
+      });
+    }
+  };
 
   const handleSelectStill = async (still: CandidateStill) => {
     if (!currentEp) return;
@@ -610,8 +692,32 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
       )}
 
       {/* Candidate Stills Strip (Magic Frame Carousel - Generator View Only) */}
-      {currentEp && (Boolean(show.tmdb_id) || Boolean(show.tvdb_id)) && !isShowingMediux && (
-        <div className="bg-dark-900 border border-gray-800 rounded-xl p-3 flex flex-col gap-2.5 shrink-0">
+      {currentEp && !isShowingMediux && (
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragOverStills(true);
+          }}
+          onDragLeave={() => setIsDragOverStills(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragOverStills(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) handleUploadCustomStill(file);
+          }}
+          className={`relative bg-dark-900 border rounded-xl p-3 flex flex-col gap-2.5 shrink-0 transition-all ${
+            isDragOverStills
+              ? 'border-dashed border-amber-400 bg-amber-500/10 ring-2 ring-amber-400/40'
+              : 'border-gray-800'
+          }`}
+        >
+          {isDragOverStills && (
+            <div className="absolute inset-0 bg-dark-950/80 backdrop-blur-sm z-20 rounded-xl flex items-center justify-center gap-2 text-amber-300 text-xs font-semibold pointer-events-none">
+              <Upload className="w-4 h-4 animate-bounce" />
+              <span>Drop custom image here to upload</span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <Film className="w-3.5 h-3.5 text-brand-400" />
@@ -619,24 +725,56 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
                 Candidate Stills ({candidateStills.length})
               </span>
               <span className="text-[10px] text-gray-500">
-                Click any frame to auto-save
+                Click any frame or upload your own
               </span>
             </div>
 
-            <button
-              type="button"
-              onClick={handleAutoPick}
-              disabled={isAutoPicking || candidateStills.length === 0}
-              className="px-2.5 py-1 rounded-lg bg-dark-800 hover:bg-dark-700 border border-purple-500/40 text-purple-300 hover:text-purple-200 text-[11px] font-medium flex items-center gap-1.5 transition disabled:opacity-40"
-              title={`Smart auto-pick the highest community-rated frame for Season ${currentEp.season_number}`}
-            >
-              {isAutoPicking ? (
-                <Loader2 className="w-3 h-3 animate-spin text-purple-400" />
-              ) : (
-                <Sparkles className="w-3 h-3 text-purple-400" />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Upload Custom Screencap Button */}
+              <button
+                type="button"
+                onClick={() => stillFileInputRef.current?.click()}
+                disabled={isUploadingStill}
+                className="px-2.5 py-1 rounded-lg bg-dark-800 hover:bg-dark-700 border border-amber-500/40 text-amber-300 hover:text-amber-200 text-[11px] font-medium flex items-center gap-1.5 transition disabled:opacity-40"
+                title="Upload a custom screenshot or frame for this episode"
+              >
+                {isUploadingStill ? (
+                  <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
+                ) : (
+                  <Upload className="w-3 h-3 text-amber-400" />
+                )}
+                <span>Upload Screencap</span>
+              </button>
+              <input
+                ref={stillFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleUploadCustomStill(file);
+                  if (stillFileInputRef.current) stillFileInputRef.current.value = '';
+                }}
+              />
+
+              {/* Smart Auto-Pick Button */}
+              {(Boolean(show.tmdb_id) || Boolean(show.tvdb_id)) && (
+                <button
+                  type="button"
+                  onClick={handleAutoPick}
+                  disabled={isAutoPicking || candidateStills.length === 0}
+                  className="px-2.5 py-1 rounded-lg bg-dark-800 hover:bg-dark-700 border border-purple-500/40 text-purple-300 hover:text-purple-200 text-[11px] font-medium flex items-center gap-1.5 transition disabled:opacity-40"
+                  title={`Smart auto-pick the highest community-rated frame for Season ${currentEp.season_number}`}
+                >
+                  {isAutoPicking ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-purple-400" />
+                  ) : (
+                    <Sparkles className="w-3 h-3 text-purple-400" />
+                  )}
+                  <span>Smart Auto-Pick (S{currentEp.season_number})</span>
+                </button>
               )}
-              <span>Smart Auto-Pick (Season {currentEp.season_number})</span>
-            </button>
+            </div>
           </div>
 
           {/* Stills Horizontal Carousel */}
@@ -646,8 +784,8 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
               <span>Loading candidate stills...</span>
             </div>
           ) : candidateStills.length === 0 ? (
-            <div className="text-[11px] text-gray-500 italic py-1">
-              No candidate stills available for this episode.
+            <div className="text-[11px] text-gray-500 italic py-1 flex items-center justify-between">
+              <span>No candidate stills found. Click "Upload Screencap" or drag an image here.</span>
             </div>
           ) : (
             <div className="flex items-center gap-2.5 overflow-x-auto -mx-1.5 px-1.5 py-2 scrollbar-thin scrollbar-thumb-gray-800">
@@ -693,7 +831,9 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
                     {/* Provider Tag */}
                     {still.provider && (
                       <div className={`absolute top-1 right-1 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow backdrop-blur-sm ${
-                        still.provider === 'tvdb'
+                        still.provider === 'custom'
+                          ? 'bg-amber-600/90 text-amber-100 border border-amber-400/40'
+                          : still.provider === 'tvdb'
                           ? 'bg-emerald-800/90 text-emerald-200 border border-emerald-600/40'
                           : 'bg-blue-800/90 text-blue-200 border border-blue-600/40'
                       }`}>
@@ -701,11 +841,29 @@ export const StudioPreviewCanvas: React.FC<StudioPreviewCanvasProps> = ({
                       </div>
                     )}
 
-                    {/* Stats overlay */}
-                    <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1 flex items-center justify-between text-[8px] font-mono text-gray-300">
-                      <span>★ {still.vote_average}</span>
-                      <span>{still.width}p</span>
-                    </div>
+                    {/* Stats overlay or Custom Frame Remove Button */}
+                    {still.provider === 'custom' ? (
+                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-1 flex items-center justify-between text-[8px] font-mono z-10">
+                        <span className="text-amber-300 font-semibold">CUSTOM FRAME</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteCustomStill(still);
+                          }}
+                          className="px-1.5 py-0.5 rounded bg-red-800/90 hover:bg-red-600 text-white flex items-center gap-0.5 text-[8px] font-sans font-medium transition shadow"
+                          title="Delete this custom screencap and revert"
+                        >
+                          <Trash2 className="w-2.5 h-2.5" />
+                          <span>Remove</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1 flex items-center justify-between text-[8px] font-mono text-gray-300">
+                        <span>★ {still.vote_average}</span>
+                        <span>{still.width}p</span>
+                      </div>
+                    )}
                   </button>
                 );
               })}

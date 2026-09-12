@@ -1,4 +1,4 @@
-import { Show, Episode, StyleConfig, MediuxSet, AppConfig, AuthStatus, PinResponse, PollResponse, StillsResponse, PaletteResponse } from './types';
+import { Show, Episode, StyleConfig, MediuxSet, AppConfig, AuthStatus, PinResponse, PollResponse, StillsResponse, PaletteResponse, CandidateStill } from './types';
 
 export const api = {
   async getConfig(): Promise<AppConfig> {
@@ -413,6 +413,73 @@ export const api = {
       throw new Error(`Failed to extract palette: status ${res.status}`);
     }
     return res.json();
+  },
+
+  async uploadCustomStill(
+    ratingKey: string,
+    seasonNumber: number,
+    episodeNumber: number,
+    file: File
+  ): Promise<{ status: string; still_path: string; still: CandidateStill }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`/api/shows/${ratingKey}/episodes/${seasonNumber}/${episodeNumber}/custom-still`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) {
+      let msg = `Upload failed: status ${res.status}`;
+      try {
+        const data = await res.json();
+        if (data.detail) msg = data.detail;
+      } catch {
+        const text = await res.text();
+        if (text) msg = text;
+      }
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  async deleteCustomStill(
+    ratingKey: string,
+    seasonNumber: number,
+    episodeNumber: number
+  ): Promise<{ status: string; message: string }> {
+    const res = await fetch(`/api/shows/${ratingKey}/episodes/${seasonNumber}/${episodeNumber}/custom-still`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      let msg = `Failed to delete custom still: status ${res.status}`;
+      try {
+        const data = await res.json();
+        if (data.detail) msg = data.detail;
+      } catch {
+        const text = await res.text();
+        if (text) msg = text;
+      }
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  async downloadShowCardsZip(
+    ratingKey: string,
+    source: 'auto' | 'mediux' | 'generator' = 'auto'
+  ): Promise<Blob> {
+    const res = await fetch(`/api/shows/${ratingKey}/export-zip?source=${source}`);
+    if (!res.ok) {
+      let msg = `Export zip failed: status ${res.status}`;
+      try {
+        const data = await res.json();
+        if (data.detail) msg = data.detail;
+      } catch {
+        const text = await res.text();
+        if (text) msg = text;
+      }
+      throw new Error(msg);
+    }
+    return res.blob();
   }
 };
 

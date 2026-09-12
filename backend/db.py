@@ -654,5 +654,20 @@ def get_all_still_overrides_for_show(rating_key: str) -> Dict[str, str]:
     conn.close()
     return {f"{r['season_number']}_{r['episode_number']}": r["still_path"] for r in rows}
 
+def get_episodes_for_show(rating_key: str) -> List[Dict[str, Any]]:
+    """Retrieve all indexed episodes for a show from local database."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT rating_key, show_rating_key, season_number, episode_number, title, card_source, card_url 
+        FROM episodes 
+        WHERE show_rating_key = ? 
+        ORDER BY season_number ASC, episode_number ASC
+    """, (str(rating_key),))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+
 
 

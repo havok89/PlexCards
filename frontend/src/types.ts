@@ -147,7 +147,13 @@ export interface CandidateStill {
   quality_score: number;
   is_top_pick?: boolean;
   is_selected?: boolean;
-  provider?: 'tvdb' | 'tmdb';
+  provider?: 'tvdb' | 'tmdb' | 'custom';
+}
+
+export interface FontItem {
+  name: string;
+  type: string;
+  filename?: string;
 }
 
 export interface StillsResponse {

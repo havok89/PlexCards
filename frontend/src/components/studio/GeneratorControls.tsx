@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Sparkles, Loader2, Upload, CheckCircle, Film, Image as ImageIcon, ChevronDown, ChevronUp, Palette, Pipette } from 'lucide-react';
-import { StyleConfig, PaletteResponse, Episode } from '../../types';
+import { StyleConfig, PaletteResponse, Episode, FontItem } from '../../types';
 import { api } from '../../api';
+import { VisualFontPicker } from './VisualFontPicker';
 
 export const getSubheadingPreview = (
   fmt?: string,
@@ -91,7 +92,7 @@ interface GeneratorControlsProps {
   aiReasoning: string;
   isEpisodesLoading: boolean;
   activeShowHasCustomStyle: boolean;
-  availableFonts: Array<{ name: string; type: string }>;
+  availableFonts: FontItem[];
   isUploadingFont: boolean;
   handleFontUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleSaveStyle: () => void;
@@ -343,53 +344,22 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
         </div>
       </div>
 
-      {/* Font Family & Custom Font Upload */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-[11px] text-gray-400">Font Family</label>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploadingFont}
-            className="text-[11px] text-brand-400 hover:text-brand-300 flex items-center gap-1 transition"
-          >
-            {isUploadingFont ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <Upload className="w-3 h-3" />
-            )}
-            <span>Upload Font (.ttf / .otf)</span>
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".ttf,.otf"
-            onChange={handleFontUpload}
-            className="hidden"
-          />
-        </div>
-        <select
-          value={styleConfig.font_family}
-          onChange={(e) =>
-            setStyleConfig((prev) => ({ ...prev, font_family: e.target.value }))
-          }
-          className="w-full bg-dark-800 border border-gray-700 text-xs rounded-lg px-3 py-2 text-white focus:outline-none focus:border-brand-500"
-        >
-          {styleConfig.font_family &&
-            !availableFonts.some(
-              (f) => f.name.toLowerCase() === styleConfig.font_family?.toLowerCase()
-            ) && (
-              <option value={styleConfig.font_family}>
-                {styleConfig.font_family} (Auto-downloaded / AI suggested)
-              </option>
-            )}
-          {availableFonts.map((f) => (
-            <option key={f.name} value={f.name}>
-              {f.name} {f.type === 'custom' ? '★ (Custom Upload)' : ''}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Primary Title Font Picker */}
+      <VisualFontPicker
+        label="Primary Title Font"
+        selectedFont={styleConfig.font_family}
+        onSelectFont={(fontName) =>
+          setStyleConfig((prev) => ({ ...prev, font_family: fontName }))
+        }
+        availableFonts={availableFonts}
+        onUploadFont={async (file) => {
+          const fakeEvent = {
+            target: { files: [file] }
+          } as unknown as React.ChangeEvent<HTMLInputElement>;
+          handleFontUpload(fakeEvent);
+        }}
+        isUploadingFont={isUploadingFont}
+      />
 
       {/* Title Font Size */}
       <div>
@@ -639,52 +609,32 @@ export const GeneratorControls: React.FC<GeneratorControlsProps> = ({
             </div>
 
             {/* Subtitle Font Family Selector */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] text-gray-400 font-medium">Subtitle Font</label>
-                {styleConfig.subheading_font_family && styleConfig.subheading_font_family !== styleConfig.font_family && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setStyleConfig((prev) => ({
-                        ...prev,
-                        subheading_font_family: undefined
-                      }))
-                    }
-                    className="text-[10px] text-brand-400 hover:underline"
-                  >
-                    Reset to Match Title
-                  </button>
-                )}
-              </div>
-              <select
-                value={styleConfig.subheading_font_family || ''}
-                onChange={(e) =>
-                  setStyleConfig((prev) => ({
-                    ...prev,
-                    subheading_font_family: e.target.value || undefined
-                  }))
-                }
-                className="w-full bg-dark-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-brand-500 font-medium"
-              >
-                <option value="">Match Title Font ({styleConfig.font_family})</option>
-                {styleConfig.subheading_font_family &&
-                  !availableFonts.some(
-                    (f) => f.name.toLowerCase() === styleConfig.subheading_font_family?.toLowerCase()
-                  ) && (
-                    <option value={styleConfig.subheading_font_family}>
-                      {styleConfig.subheading_font_family} (Auto-downloaded / AI suggested)
-                    </option>
-                  )}
-                <optgroup label="Installed & Google Fonts">
-                  {availableFonts.map((f) => (
-                    <option key={f.name} value={f.name}>
-                      {f.name} {f.type === 'custom' ? '(Custom)' : ''}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            </div>
+            <VisualFontPicker
+              label="Subtitle Font"
+              selectedFont={styleConfig.subheading_font_family}
+              onSelectFont={(fontName) =>
+                setStyleConfig((prev) => ({
+                  ...prev,
+                  subheading_font_family: fontName || undefined
+                }))
+              }
+              availableFonts={availableFonts}
+              onUploadFont={async (file) => {
+                const fakeEvent = {
+                  target: { files: [file] }
+                } as unknown as React.ChangeEvent<HTMLInputElement>;
+                handleFontUpload(fakeEvent);
+              }}
+              isUploadingFont={isUploadingFont}
+              isSubtitle={true}
+              matchTitleFontName={styleConfig.font_family}
+              onResetMatchTitle={() =>
+                setStyleConfig((prev) => ({
+                  ...prev,
+                  subheading_font_family: undefined
+                }))
+              }
+            />
 
             {/* Subheading Format Selector */}
             <div>

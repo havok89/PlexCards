@@ -44,6 +44,15 @@ class SyncManager:
         from backend.db import get_episode_still_override, set_episode_still_override
         override_path = get_episode_still_override(rk, s_num, e_num) if (rk and s_num is not None and e_num is not None) else None
 
+        # 0. If override is a custom uploaded still or local file
+        if override_path and (override_path.startswith("custom:") or override_path.startswith("custom_")):
+            clean_filename = override_path.replace("custom:", "").split("?")[0]
+            custom_file = STILLS_DIR / clean_filename
+            if custom_file.exists():
+                return custom_file
+        if override_path and Path(override_path).is_absolute() and Path(override_path).exists():
+            return Path(override_path)
+
         # 1. If override is an explicit TVDB URL
         if override_path and (override_path.startswith("http://") or override_path.startswith("https://")) and tvdb_id:
             still_file = self.tvdb.get_episode_still(int(tvdb_id), s_num, e_num, specific_still_url=override_path)
@@ -51,7 +60,7 @@ class SyncManager:
                 return still_file
 
         # 2. If override is a TMDb file path
-        if override_path and not override_path.startswith("http") and tmdb_id:
+        if override_path and not override_path.startswith("http") and not override_path.startswith("custom") and tmdb_id:
             still_file = self.tmdb.get_episode_still(int(tmdb_id), s_num, e_num, specific_still_path=override_path)
             if still_file and still_file.exists():
                 return still_file

@@ -65,6 +65,7 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
   const [isForceLive, setIsForceLive] = useState<boolean>(false);
   const [previewTab, setPreviewTab] = useState<'mediux' | 'generator'>('mediux');
   const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(initialHasGeminiKey);
+  const [isExportingZip, setIsExportingZip] = useState<boolean>(false);
 
   // TMDb search and matching state
   const [isTmdbModalOpen, setIsTmdbModalOpen] = useState<boolean>(false);
@@ -767,6 +768,45 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
     previewTab === 'mediux'
   );
 
+  const handleExportZip = async () => {
+    setIsExportingZip(true);
+    try {
+      showToast({
+        type: 'info',
+        title: 'Packaging Title Cards',
+        message: `Rendering and packaging 1080p cards for "${activeShow.title}" into a .zip archive...`
+      });
+
+      const sourceMode = previewTab === 'mediux' ? 'mediux' : (activeShow.mode === 'generator_only' ? 'generator' : 'auto');
+      const blob = await api.downloadShowCardsZip(activeShow.rating_key, sourceMode);
+
+      // Trigger browser file download
+      const cleanName = activeShow.title.replace(/[\\/*?:"<>|]/g, '').trim();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${cleanName}_Title_Cards.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      showToast({
+        type: 'success',
+        title: 'Download Ready',
+        message: `Saved "${cleanName}_Title_Cards.zip" successfully!`
+      });
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Export Failed',
+        message: String(err?.message || err)
+      });
+    } finally {
+      setIsExportingZip(false);
+    }
+  };
+
   const activeDisplayUrl = isShowingMediux ? (currentEpMediuxCardUrl || null) : (previewUrl || null);
 
   return (
@@ -787,6 +827,8 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
           isApplying={isApplying || isApplyingSingle}
           applyProgress={applyProgress}
           onApplyCards={handleApply}
+          onExportZip={handleExportZip}
+          isExportingZip={isExportingZip}
         />
 
         {/* Modal Body: Responsive flex stack on mobile, 2 columns on desktop */}
