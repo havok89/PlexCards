@@ -1,4 +1,9 @@
-import { Show, Episode, StyleConfig, MediuxSet, AppConfig, AuthStatus, PinResponse, PollResponse, StillsResponse, PaletteResponse, CandidateStill, PlexLibrary } from './types';
+import {
+  Show, Episode, StyleConfig, MediuxSet, AppConfig, AuthStatus,
+  PinResponse, PollResponse, StillsResponse, PaletteResponse,
+  CandidateStill, PlexLibrary, Movie, MovieCollection,
+  TmdbPosterOption, MediuxMovieSet, MediuxFranchiseSet
+} from './types';
 
 export const api = {
   async getConfig(): Promise<AppConfig> {
@@ -6,16 +11,21 @@ export const api = {
     return res.json();
   },
 
-  async getLibraries(): Promise<{ libraries: PlexLibrary[]; active_library: string }> {
+  async getLibraries(): Promise<{
+    libraries: PlexLibrary[];
+    active_library: string;
+    active_tv_library?: string;
+    active_movie_library?: string;
+  }> {
     const res = await fetch('/api/plex/libraries');
     return res.json();
   },
 
-  async switchLibrary(libraryKey: string): Promise<{ status: string; active_library: string }> {
+  async switchLibrary(libraryKey: string, libraryType?: string): Promise<{ status: string; active_library: string }> {
     const res = await fetch('/api/plex/libraries/switch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ library_key: libraryKey })
+      body: JSON.stringify({ library_key: libraryKey, library_type: libraryType })
     });
     return res.json();
   },
@@ -43,9 +53,136 @@ export const api = {
     return data.shows || [];
   },
 
-  async scanLibrary(library?: string): Promise<{ indexed_shows: number }> {
-    const url = library ? `/api/library/scan?library=${encodeURIComponent(library)}` : '/api/library/scan';
+  async scanLibrary(library?: string, type?: string): Promise<{ indexed_shows?: number; total_movies?: number; total_collections?: number }> {
+    const params = new URLSearchParams();
+    if (library) params.append('library', library);
+    if (type) params.append('type', type);
+    const url = `/api/library/scan?${params.toString()}`;
     const res = await fetch(url, { method: 'POST' });
+    return res.json();
+  },
+
+  async getMovies(library?: string, collection?: string, sort: string = 'title_asc', search?: string): Promise<Movie[]> {
+    const params = new URLSearchParams();
+    if (library && library !== 'all') params.append('library', library);
+    if (collection) params.append('collection', collection);
+    if (sort) params.append('sort', sort);
+    if (search) params.append('search', search);
+    const res = await fetch(`/api/movies?${params.toString()}`);
+    const data = await res.json();
+    return data.movies || [];
+  },
+
+  async getMovieDetails(ratingKey: string): Promise<{ movie: Movie; tmdb_details?: any }> {
+    const res = await fetch(`/api/movies/${ratingKey}`);
+    return res.json();
+  },
+
+  async getMoviePosters(ratingKey: string): Promise<{
+    rating_key: string;
+    title: string;
+    year?: number;
+    tmdb_id?: number;
+    current_poster?: string;
+    mediux_sets: MediuxMovieSet[];
+    tmdb_posters: TmdbPosterOption[];
+  }> {
+    const res = await fetch(`/api/movies/${ratingKey}/posters`);
+    return res.json();
+  },
+
+  async uploadMoviePoster(
+    ratingKey: string,
+    file: File
+  ): Promise<{ status: string; poster_url: string; file_path: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`/api/movies/${ratingKey}/upload-poster`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Upload failed' }));
+      throw new Error(err.detail || 'Failed to upload movie poster');
+    }
+    return res.json();
+  },
+
+  async applyMoviePoster(
+    ratingKey: string,
+    posterUrl: string,
+    source: string = 'mediux',
+    forceLive: boolean = false,
+    filePath?: string
+  ): Promise<{ status: string; message: string; poster_url: string; test_mode?: boolean }> {
+    const res = await fetch(`/api/movies/${ratingKey}/apply-poster`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ poster_url: posterUrl, source, force_live: forceLive, file_path: filePath })
+    });
+    return res.json();
+  },
+
+  async revertMoviePoster(
+    ratingKey: string,
+    forceLive: boolean = false
+  ): Promise<{ status: string; message: string; test_mode?: boolean }> {
+    const res = await fetch(`/api/movies/${ratingKey}/revert-poster`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force_live: forceLive })
+    });
+    return res.json();
+  },
+
+  async scanMovies(library?: string): Promise<{ total_movies: number; total_collections: number }> {
+    const url = library ? `/api/movies/scan?library=${encodeURIComponent(library)}` : '/api/movies/scan';
+    const res = await fetch(url, { method: 'POST' });
+    return res.json();
+  },
+
+  async getCollections(library?: string): Promise<MovieCollection[]> {
+    const url = library && library !== 'all' ? `/api/collections?library=${encodeURIComponent(library)}` : '/api/collections';
+    const res = await fetch(url);
+    const data = await res.json();
+    return data.collections || [];
+  },
+
+  async getCollectionDetails(ratingKey: string): Promise<{ collection: MovieCollection; movies: Movie[] }> {
+    const res = await fetch(`/api/collections/${ratingKey}`);
+    return res.json();
+  },
+
+  async getCollectionPosters(ratingKey: string): Promise<{
+    rating_key: string;
+    title: string;
+    tmdb_collection_id?: number;
+    applied_mediux_set_id?: string;
+    movies: Movie[];
+    mediux_sets: MediuxFranchiseSet[];
+    tmdb_posters: TmdbPosterOption[];
+  }> {
+    const res = await fetch(`/api/collections/${ratingKey}/posters`);
+    return res.json();
+  },
+
+  async applyCollectionSet(
+    ratingKey: string,
+    collectionPosterUrl?: string,
+    moviePosters: { movie_rating_key: string; poster_url: string }[] = [],
+    mediuxSetId?: string,
+    forceLive: boolean = false
+  ): Promise<{ status: string; applied_count: number; errors: string[]; test_mode?: boolean; message?: string }> {
+    const res = await fetch(`/api/collections/${ratingKey}/apply-set`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        collection_poster_url: collectionPosterUrl,
+        movie_posters: moviePosters,
+        mediux_set_id: mediuxSetId,
+        force_live: forceLive
+      })
+    });
     return res.json();
   },
 

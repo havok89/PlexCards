@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Show } from '../types';
-import { Zap, Wand2, Ban, ChevronRight, Film } from 'lucide-react';
+import { Zap, Wand2, Ban, ChevronRight, Film, Tv } from 'lucide-react';
+import { LazyImage } from './LazyImage';
 
 interface ShowCardProps {
   show: Show;
@@ -8,21 +9,25 @@ interface ShowCardProps {
 }
 
 export const ShowCard: React.FC<ShowCardProps> = ({ show, onClick }) => {
-  const [imgError, setImgError] = useState(false);
-
   return (
     <div
       onClick={onClick}
       className="group bg-dark-900 border border-gray-800 hover:border-brand-500/60 rounded-xl overflow-hidden cursor-pointer transition transform hover:-translate-y-1 shadow-lg hover:shadow-brand-500/10 flex flex-col"
     >
       <div className="relative aspect-[2/3] bg-dark-850 overflow-hidden">
-        {show.poster_url && !imgError ? (
-          <img
+        {show.poster_url ? (
+          <LazyImage
             src={show.poster_url}
             alt={show.title}
-            onError={() => setImgError(true)}
             className="w-full h-full object-cover transition duration-300 group-hover:scale-105"
-            loading="lazy"
+            placeholder={
+              <div className="flex flex-col items-center justify-center text-gray-600 p-2">
+                <Tv className="w-8 h-8 opacity-40 animate-pulse" />
+              </div>
+            }
+            fallbackIcon={
+              <Tv className="w-8 h-8 text-gray-600 mb-1 group-hover:text-brand-500 transition" />
+            }
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-dark-800 to-dark-900 p-4 text-center border border-gray-800/60">

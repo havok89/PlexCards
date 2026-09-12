@@ -54,6 +54,80 @@ export interface PlexLibrary {
   type: string;
 }
 
+export interface Movie {
+  rating_key: string;
+  tmdb_id?: number;
+  imdb_id?: string;
+  title: string;
+  year?: number;
+  duration?: number;
+  summary?: string;
+  poster_url?: string;
+  backdrop_url?: string;
+  collection_rating_key?: string;
+  collection_name?: string;
+  has_custom_poster?: number;
+  custom_poster_url?: string;
+  custom_poster_source?: string;
+  library_section_id?: string;
+  library_name?: string;
+}
+
+export interface MovieCollection {
+  rating_key: string;
+  title: string;
+  tmdb_collection_id?: number;
+  poster_url?: string;
+  movie_count: number;
+  applied_mediux_set_id?: string;
+  library_section_id?: string;
+  library_name?: string;
+  movies?: Movie[];
+}
+
+export interface TmdbPosterOption {
+  file_path: string;
+  url: string;
+  thumb_url: string;
+  width?: number;
+  height?: number;
+  vote_average?: number;
+  vote_count?: number;
+  is_textless?: boolean;
+  language?: string | null;
+}
+
+export interface MediuxMoviePoster {
+  id: string;
+  title: string;
+  url: string;
+}
+
+export interface MediuxMovieSet {
+  id: string;
+  set_name: string;
+  creator: string;
+  date_updated: string;
+  set_url: string;
+  poster_url?: string;
+  backdrop_url?: string;
+  posters: MediuxMoviePoster[];
+}
+
+export interface MediuxFranchiseSet {
+  id: string;
+  set_name: string;
+  creator: string;
+  date_updated: string;
+  set_url: string;
+  collection_poster_url?: string;
+  movie_posters: {
+    id: string;
+    title: string;
+    url: string;
+  }[];
+}
+
 export interface Episode {
   rating_key: string;
   season_number: number;

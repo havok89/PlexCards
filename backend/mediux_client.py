@@ -221,3 +221,188 @@ class MediuxClient:
         sets.sort(key=lambda s: len(req_set.intersection(set(s["seasons_covered"]))), reverse=True)
         return sets[0]
 
+    def get_movie_sets(self, tmdb_id: int) -> List[Dict[str, Any]]:
+        """Fetch all poster sets for a given TMDb movie ID from MediUX."""
+        now = time.time()
+        cache_key = f"movie_{tmdb_id}"
+        if hasattr(self, '_movie_cache') and cache_key in self._movie_cache:
+            cached_time, cached_sets = self._movie_cache[cache_key]
+            if now - cached_time < self._ttl:
+                return cached_sets
+
+        url = f"{self.BASE_URL}/movies/{tmdb_id}"
+        try:
+            r = requests.get(url, headers=self.headers, timeout=12)
+            if r.status_code != 200:
+                logger.warning(f"MediUX returned status {r.status_code} for movie {tmdb_id}")
+                return []
+
+            parsed_sets = self._parse_movie_page(r.text)
+            if not hasattr(self, '_movie_cache'):
+                self._movie_cache = {}
+            self._movie_cache[cache_key] = (now, parsed_sets)
+            return parsed_sets
+        except Exception as e:
+            logger.error(f"Failed to fetch MediUX data for TMDb movie {tmdb_id}: {e}")
+            return []
+
+    def _parse_movie_page(self, html: str) -> List[Dict[str, Any]]:
+        """Extract movie poster sets from MediUX Next.js payload."""
+        chunks = re.findall(r'self\.__next_f\.push\(\[1,"(.*?)"\]\)', html)
+        if not chunks:
+            return []
+
+        combined = "".join(chunks).replace('\\"', '"').replace('\\\\', '\\')
+        sets_dict: Dict[str, Dict[str, Any]] = {}
+
+        for m in re.finditer(r'\{"id":"(\d+)","set_name":"([^"]+)"', combined):
+            s_id, s_name = m.group(1), m.group(2)
+            if s_id not in sets_dict:
+                snippet = combined[m.start(): m.start() + 1000]
+                user_match = re.search(r'"username":"([^"]+)"', snippet)
+                user = user_match.group(1) if user_match else "Unknown"
+                date_match = re.search(r'"date_updated":"([^"]+)"', snippet)
+                date_updated = date_match.group(1) if date_match else ""
+
+                sets_dict[s_id] = {
+                    "id": s_id,
+                    "set_name": s_name,
+                    "creator": user,
+                    "date_updated": date_updated,
+                    "set_url": f"{self.BASE_URL}/sets/{s_id}",
+                    "poster_url": None,
+                    "backdrop_url": None,
+                    "posters": []
+                }
+
+        file_pattern = re.compile(
+            r'\{"set_id":\{"id":"([^"]+)".*?\},"id":"([a-f0-9\-]+)","filename_disk":"[^"]+","title":"([^"]+)","fileType":"([^"]+)"'
+        )
+
+        for m in file_pattern.finditer(combined):
+            s_id, file_id, title, file_type = m.groups()
+            asset_url = f"{self.ASSET_BASE}/{file_id}"
+
+            if s_id not in sets_dict:
+                sets_dict[s_id] = {
+                    "id": s_id,
+                    "set_name": title,
+                    "creator": "Unknown",
+                    "date_updated": "",
+                    "set_url": f"{self.BASE_URL}/sets/{s_id}",
+                    "poster_url": None,
+                    "backdrop_url": None,
+                    "posters": []
+                }
+
+            if file_type == "poster":
+                if not sets_dict[s_id]["poster_url"]:
+                    sets_dict[s_id]["poster_url"] = asset_url
+                sets_dict[s_id]["posters"].append({
+                    "id": file_id,
+                    "title": title,
+                    "url": asset_url
+                })
+            elif file_type == "backdrop" and not sets_dict[s_id]["backdrop_url"]:
+                sets_dict[s_id]["backdrop_url"] = asset_url
+
+        results = [s for s in sets_dict.values() if s["poster_url"] or s["posters"]]
+        return results
+
+    def get_collection_sets(self, tmdb_collection_id: int) -> List[Dict[str, Any]]:
+        """Fetch franchise boxset sets from MediUX for a given TMDb collection ID."""
+        now = time.time()
+        cache_key = f"collection_{tmdb_collection_id}"
+        if hasattr(self, '_collection_cache') and cache_key in self._collection_cache:
+            cached_time, cached_sets = self._collection_cache[cache_key]
+            if now - cached_time < self._ttl:
+                return cached_sets
+
+        # Primary endpoint on MediUX is /collections/{id}
+        url = f"{self.BASE_URL}/collections/{tmdb_collection_id}"
+        try:
+            r = requests.get(url, headers=self.headers, timeout=12)
+            if r.status_code != 200:
+                # Fallback to /boxsets/{id} if needed
+                fallback_url = f"{self.BASE_URL}/boxsets/{tmdb_collection_id}"
+                r = requests.get(fallback_url, headers=self.headers, timeout=12)
+                if r.status_code != 200:
+                    logger.debug(f"MediUX collections returned status {r.status_code} for collection {tmdb_collection_id}")
+                    return []
+
+            parsed_sets = self._parse_boxset_page(r.text)
+            if not hasattr(self, '_collection_cache'):
+                self._collection_cache = {}
+            self._collection_cache[cache_key] = (now, parsed_sets)
+            return parsed_sets
+        except Exception as e:
+            logger.error(f"Failed to fetch MediUX boxset data for TMDb collection {tmdb_collection_id}: {e}")
+            return []
+
+    def _parse_boxset_page(self, html: str) -> List[Dict[str, Any]]:
+        """Extract boxset and child movie posters from MediUX Next.js payload."""
+        chunks = re.findall(r'self\.__next_f\.push\(\[1,"(.*?)"\]\)', html)
+        if not chunks:
+            return []
+
+        combined = "".join(chunks).replace('\\"', '"').replace('\\\\', '\\')
+        sets_dict: Dict[str, Dict[str, Any]] = {}
+
+        for m in re.finditer(r'\{"id":"(\d+)","set_name":"([^"]+)"', combined):
+            s_id, s_name = m.group(1), m.group(2)
+            if s_id not in sets_dict:
+                snippet = combined[m.start(): m.start() + 1000]
+                user_match = re.search(r'"username":"([^"]+)"', snippet)
+                user = user_match.group(1) if user_match else "Unknown"
+                date_match = re.search(r'"date_updated":"([^"]+)"', snippet)
+                date_updated = date_match.group(1) if date_match else ""
+
+                sets_dict[s_id] = {
+                    "id": s_id,
+                    "set_name": s_name,
+                    "creator": user,
+                    "date_updated": date_updated,
+                    "set_url": f"{self.BASE_URL}/sets/{s_id}",
+                    "collection_poster_url": None,
+                    "movie_posters": []
+                }
+
+        # Support both JSON property ordering variations from MediUX Next.js payload
+        pattern1 = re.compile(
+            r'"id":"([a-f0-9\-]{36})"[^{}]*?"title":"([^"]+)"[^{}]*?"fileType":"([^"]+)"[^{}]*?"set_id":\{"id":"(\d+)"'
+        )
+        pattern2 = re.compile(
+            r'"set_id":\{"id":"(\d+)"[^{}]*?\}[^{}]*?"id":"([a-f0-9\-]{36})"[^{}]*?"title":"([^"]+)"[^{}]*?"fileType":"([^"]+)"'
+        )
+
+        for pat in [pattern1, pattern2]:
+            for m in pat.finditer(combined):
+                if pat == pattern1:
+                    file_id, title, file_type, s_id = m.groups()
+                else:
+                    s_id, file_id, title, file_type = m.groups()
+
+                if s_id not in sets_dict or file_type != "poster":
+                    continue
+
+                asset_url = f"{self.ASSET_BASE}/{file_id}"
+                # Deduplicate by file_id
+                if any(p["id"] == file_id for p in sets_dict[s_id]["movie_posters"]):
+                    continue
+
+                if any(w in title.lower() for w in ["collection", "boxset", "trilogy", "quadrilogy", "anthology", "series", "saga"]) and not sets_dict[s_id]["collection_poster_url"]:
+                    sets_dict[s_id]["collection_poster_url"] = asset_url
+                else:
+                    sets_dict[s_id]["movie_posters"].append({
+                        "id": file_id,
+                        "title": title.strip(),
+                        "url": asset_url
+                    })
+
+        for s in sets_dict.values():
+            if not s["collection_poster_url"] and s["movie_posters"]:
+                s["collection_poster_url"] = s["movie_posters"][0]["url"]
+
+        return [s for s in sets_dict.values() if s["collection_poster_url"] or s["movie_posters"]]
+
+

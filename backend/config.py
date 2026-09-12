@@ -10,6 +10,7 @@ load_dotenv(BASE_DIR / ".env")
 PLEX_URL = os.getenv("PLEX_URL", "http://localhost:32400").rstrip("/")
 PLEX_TOKEN = os.getenv("PLEX_TOKEN", "")
 PLEX_TV_LIBRARY = os.getenv("PLEX_TV_LIBRARY", "TV Shows")
+PLEX_MOVIE_LIBRARY = os.getenv("PLEX_MOVIE_LIBRARY", "Movies")
 
 # TMDb
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")

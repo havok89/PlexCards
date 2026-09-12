@@ -2,7 +2,7 @@ import logging
 import re
 from typing import List, Dict, Optional, Any
 from plexapi.server import PlexServer
-from backend.config import PLEX_URL, PLEX_TOKEN, PLEX_TV_LIBRARY
+from backend.config import PLEX_URL, PLEX_TOKEN, PLEX_TV_LIBRARY, PLEX_MOVIE_LIBRARY
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,65 @@ class PlexClient:
             }
             for s in sections if s.type == "show"
         ]
+
+    def get_movie_sections(self) -> List[Dict[str, Any]]:
+        """Find all Movie sections on the Plex server."""
+        server = self.server
+        sections = server.library.sections()
+        return [
+            {
+                "key": str(s.key),
+                "title": s.title,
+                "type": "movie"
+            }
+            for s in sections if s.type == "movie"
+        ]
+
+    def get_all_sections(self) -> List[Dict[str, Any]]:
+        """Find all TV and Movie sections on the Plex server."""
+        server = self.server
+        sections = server.library.sections()
+        return [
+            {
+                "key": str(s.key),
+                "title": s.title,
+                "type": s.type
+            }
+            for s in sections if s.type in ("show", "movie")
+        ]
+
+    def get_movie_section(self, target_library: Optional[str] = None):
+        """Find the Movie library case-insensitively or by section key/title."""
+        from backend.db import get_setting
+        server = self.server
+        sections = server.library.sections()
+        movie_sections = [s for s in sections if s.type == "movie"]
+
+        if not movie_sections:
+            raise ValueError("No Movie library found on Plex server.")
+
+        # 1. Check explicit target_library
+        if target_library:
+            target_str = str(target_library).strip()
+            for s in movie_sections:
+                if str(s.key) == target_str or s.title.lower() == target_str.lower():
+                    return s
+
+        # 2. Check active_plex_movie_library setting
+        active_lib = get_setting("active_plex_movie_library", None)
+        if active_lib:
+            target_str = str(active_lib).strip()
+            for s in movie_sections:
+                if str(s.key) == target_str or s.title.lower() == target_str.lower():
+                    return s
+
+        # 3. Exact or case-insensitive match on default PLEX_MOVIE_LIBRARY
+        for s in movie_sections:
+            if s.title.lower() == PLEX_MOVIE_LIBRARY.lower():
+                return s
+
+        # 4. Fallback to first available Movie library
+        return movie_sections[0]
 
     def get_tv_section(self, target_library: Optional[str] = None):
         """Find the TV shows library case-insensitively or by section key/title."""
@@ -183,6 +242,141 @@ class PlexClient:
             season.uploadPoster(filepath=file_path_or_url)
         logger.info(f"✓ Uploaded season poster to Plex for {season.parentTitle} - Season {season.seasonNumber}")
 
+    def get_all_movies(self, target_library: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Retrieve all movies from Plex with TMDb IDs, collection info, and artwork."""
+        movie_section = self.get_movie_section(target_library=target_library)
+        plex_movies = movie_section.all()
+
+        result = []
+        for m in plex_movies:
+            tmdb_id = self._extract_tmdb_id(m)
+            imdb_id = self._extract_imdb_id(m)
+            poster_url = m.posterUrl if hasattr(m, 'posterUrl') else (m.thumbUrl if hasattr(m, 'thumbUrl') else None)
+            art_url = m.artUrl if hasattr(m, 'artUrl') else None
+
+            # Collections
+            collections = [c.tag for c in getattr(m, 'collections', []) if getattr(c, 'tag', None)]
+            coll_name = collections[0] if collections else None
+
+            # Duration in minutes
+            duration_mins = round(m.duration / 60000) if getattr(m, 'duration', None) else None
+
+            result.append({
+                "rating_key": str(m.ratingKey),
+                "title": m.title,
+                "year": getattr(m, 'year', None),
+                "duration": duration_mins,
+                "summary": getattr(m, 'summary', None),
+                "tmdb_id": tmdb_id,
+                "imdb_id": imdb_id,
+                "poster_url": poster_url,
+                "backdrop_url": art_url,
+                "collection_name": coll_name,
+                "collections": collections,
+                "library_section_id": str(movie_section.key),
+                "library_name": movie_section.title
+            })
+
+        return result
+
+    def get_movie_collections(self, target_library: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Retrieve all collections from the movie library."""
+        movie_section = self.get_movie_section(target_library=target_library)
+        result = []
+        try:
+            collections = movie_section.collections()
+            for c in collections:
+                items = c.items() if hasattr(c, 'items') else []
+                poster_url = c.posterUrl if hasattr(c, 'posterUrl') else (c.thumbUrl if hasattr(c, 'thumbUrl') else None)
+                tmdb_id = self._extract_tmdb_id(c)
+
+                movie_keys = [str(item.ratingKey) for item in items]
+                movie_titles = [item.title for item in items]
+
+                result.append({
+                    "rating_key": str(c.ratingKey),
+                    "title": c.title,
+                    "poster_url": poster_url,
+                    "movie_count": len(items),
+                    "movie_keys": movie_keys,
+                    "movie_titles": movie_titles,
+                    "tmdb_collection_id": tmdb_id,
+                    "library_section_id": str(movie_section.key),
+                    "library_name": movie_section.title
+                })
+        except Exception as e:
+            logger.error(f"Failed to fetch collections from Plex: {e}")
+        return result
+
+    def upload_movie_poster(self, movie_rating_key: str, file_path_or_url: str, force_live: bool = False):
+        """Upload a poster to a Plex movie (gated by TEST_MODE unless force_live=True)."""
+        from backend.config import TEST_MODE
+        if TEST_MODE and not force_live:
+            logger.info(f"🧪 [TEST MODE] Skipped upload to Plex for movie ID {movie_rating_key}. (Test mode active)")
+            return
+
+        server = self.server
+        movie = server.fetchItem(int(movie_rating_key))
+        if file_path_or_url.startswith("http://") or file_path_or_url.startswith("https://"):
+            movie.uploadPoster(url=file_path_or_url)
+        else:
+            movie.uploadPoster(filepath=file_path_or_url)
+        logger.info(f"✓ Uploaded poster to Plex for movie '{movie.title}'")
+
+    def revert_movie_poster(self, movie_rating_key: str, force_live: bool = False):
+        """Revert a movie poster back to Plex default."""
+        from backend.config import TEST_MODE
+        if TEST_MODE and not force_live:
+            logger.info(f"🧪 [TEST MODE] Skipped reverting movie ID {movie_rating_key} in Plex. (Test mode active)")
+            return
+
+        server = self.server
+        movie = server.fetchItem(int(movie_rating_key))
+        try:
+            movie.deletePoster()
+        except Exception as e:
+            logger.debug(f"Plex deletePoster notice for movie {movie_rating_key}: {e}")
+        try:
+            movie.unlockPoster()
+        except Exception as e:
+            logger.debug(f"Plex unlockPoster notice for movie {movie_rating_key}: {e}")
+        logger.info(f"✓ Reverted poster in Plex for movie '{movie.title}'")
+
+    def upload_collection_poster(self, collection_rating_key: str, file_path_or_url: str, force_live: bool = False):
+        """Upload a poster to a Plex collection (gated by TEST_MODE unless force_live=True)."""
+        from backend.config import TEST_MODE
+        if TEST_MODE and not force_live:
+            logger.info(f"🧪 [TEST MODE] Skipped upload to Plex for collection ID {collection_rating_key}. (Test mode active)")
+            return
+
+        server = self.server
+        coll = server.fetchItem(int(collection_rating_key))
+        if file_path_or_url.startswith("http://") or file_path_or_url.startswith("https://"):
+            coll.uploadPoster(url=file_path_or_url)
+        else:
+            coll.uploadPoster(filepath=file_path_or_url)
+        logger.info(f"✓ Uploaded poster to Plex for collection '{coll.title}'")
+
+    def revert_collection_poster(self, collection_rating_key: str, force_live: bool = False):
+        """Revert a collection poster back to Plex default."""
+        from backend.config import TEST_MODE
+        if TEST_MODE and not force_live:
+            logger.info(f"🧪 [TEST MODE] Skipped reverting collection ID {collection_rating_key} in Plex. (Test mode active)")
+            return
+
+        server = self.server
+        coll = server.fetchItem(int(collection_rating_key))
+        try:
+            coll.deletePoster()
+        except Exception as e:
+            logger.debug(f"Plex deletePoster notice for collection {collection_rating_key}: {e}")
+        try:
+            coll.unlockPoster()
+        except Exception as e:
+            logger.debug(f"Plex unlockPoster notice for collection {collection_rating_key}: {e}")
+        logger.info(f"✓ Reverted poster in Plex for collection '{coll.title}'")
+
+
     def _extract_tmdb_id(self, item) -> Optional[int]:
         """Extract TMDb ID from Plex GUIDs (e.g., 'tmdb://103516')."""
         if hasattr(item, 'guids'):
@@ -220,6 +414,19 @@ class PlexClient:
             if match:
                 return int(match.group(1))
         return None
+
+    def _extract_imdb_id(self, item) -> Optional[str]:
+        """Extract IMDb ID from Plex GUIDs (e.g., 'imdb://tt0078748')."""
+        if hasattr(item, 'guids'):
+            for g in item.guids:
+                if g.id.startswith('imdb://'):
+                    return g.id.replace('imdb://', '')
+        if hasattr(item, 'guid'):
+            match = re.search(r'imdb://(tt\d+)', item.guid)
+            if match:
+                return match.group(1)
+        return None
+
 
     def fix_match_show(self, rating_key: str, title: Optional[str] = None, year: Optional[int] = None) -> Dict[str, Any]:
         """Search Plex agent matches for a show and apply the top match to fix matching in Plex."""

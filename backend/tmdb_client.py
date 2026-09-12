@@ -240,3 +240,122 @@ class TMDbClient:
             logger.error(f"Error searching TMDb shows for '{query}': {e}")
         return []
 
+    def get_movie_details(self, tmdb_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch movie details including collection info and posters."""
+        if not self.api_key or not tmdb_id:
+            return None
+        url = f"{self.BASE_URL}/movie/{tmdb_id}?api_key={self.api_key}&append_to_response=images"
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                coll = data.get("belongs_to_collection")
+                return {
+                    "tmdb_id": tmdb_id,
+                    "title": data.get("title"),
+                    "overview": data.get("overview"),
+                    "release_date": data.get("release_date"),
+                    "runtime": data.get("runtime"),
+                    "genres": [g["name"] for g in data.get("genres", [])],
+                    "backdrop_url": f"{self.IMAGE_BASE}{data.get('backdrop_path')}" if data.get('backdrop_path') else None,
+                    "poster_url": f"{self.POSTER_BASE}{data.get('poster_path')}" if data.get('poster_path') else None,
+                    "collection": {
+                        "id": coll["id"],
+                        "name": coll["name"],
+                        "poster_url": f"{self.POSTER_BASE}{coll.get('poster_path')}" if coll.get('poster_path') else None
+                    } if coll else None
+                }
+        except Exception as e:
+            logger.error(f"Error fetching TMDb movie {tmdb_id}: {e}")
+        return None
+
+    def get_movie_posters(self, tmdb_id: int) -> List[Dict[str, Any]]:
+        """Fetch high-res poster options for a movie from TMDb."""
+        if not self.api_key or not tmdb_id:
+            return []
+        url = f"{self.BASE_URL}/movie/{tmdb_id}/images?api_key={self.api_key}&include_image_language=en,null"
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                posters = data.get("posters", [])
+                results = []
+                for p in posters:
+                    fp = p.get("file_path")
+                    if not fp:
+                        continue
+                    results.append({
+                        "file_path": fp,
+                        "url": f"{self.IMAGE_BASE}{fp}",
+                        "thumb_url": f"{self.POSTER_BASE}{fp}",
+                        "width": p.get("width"),
+                        "height": p.get("height"),
+                        "vote_average": p.get("vote_average", 0),
+                        "vote_count": p.get("vote_count", 0),
+                        "is_textless": p.get("iso_639_1") is None,
+                        "language": p.get("iso_639_1")
+                    })
+                # Sort by vote count descending
+                results.sort(key=lambda x: (x["vote_count"], x["vote_average"]), reverse=True)
+                return results
+        except Exception as e:
+            logger.error(f"Error fetching posters for movie {tmdb_id}: {e}")
+        return []
+
+    def get_collection_posters(self, tmdb_collection_id: int) -> List[Dict[str, Any]]:
+        """Fetch collection/boxset posters from TMDb."""
+        if not self.api_key or not tmdb_collection_id:
+            return []
+        url = f"{self.BASE_URL}/collection/{tmdb_collection_id}/images?api_key={self.api_key}&include_image_language=en,null"
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                posters = data.get("posters", [])
+                results = []
+                for p in posters:
+                    fp = p.get("file_path")
+                    if not fp:
+                        continue
+                    results.append({
+                        "file_path": fp,
+                        "url": f"{self.IMAGE_BASE}{fp}",
+                        "thumb_url": f"{self.POSTER_BASE}{fp}",
+                        "width": p.get("width"),
+                        "height": p.get("height"),
+                        "vote_average": p.get("vote_average", 0),
+                        "vote_count": p.get("vote_count", 0),
+                        "is_textless": p.get("iso_639_1") is None
+                    })
+                results.sort(key=lambda x: (x["vote_count"], x["vote_average"]), reverse=True)
+                return results
+        except Exception as e:
+            logger.error(f"Error fetching collection posters for {tmdb_collection_id}: {e}")
+        return []
+
+    def search_collection(self, query: str) -> List[Dict[str, Any]]:
+        """Search TMDb for a movie collection by name."""
+        if not self.api_key or not query:
+            return []
+        import re
+        clean_query = re.sub(r'\bcollection\b', '', query, flags=re.IGNORECASE).strip()
+        url = f"{self.BASE_URL}/search/collection?api_key={self.api_key}&query={clean_query}"
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                results = []
+                for item in data.get("results", []):
+                    results.append({
+                        "id": item["id"],
+                        "name": item.get("name"),
+                        "overview": item.get("overview"),
+                        "poster_url": f"{self.POSTER_BASE}{item.get('poster_path')}" if item.get("poster_path") else None,
+                        "backdrop_url": f"{self.IMAGE_BASE}{item.get('backdrop_path')}" if item.get("backdrop_path") else None,
+                    })
+                return results
+        except Exception as e:
+            logger.error(f"Error searching TMDb collections for '{query}': {e}")
+        return []
+
+

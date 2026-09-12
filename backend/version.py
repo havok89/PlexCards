@@ -21,6 +21,6 @@ def get_version() -> str:
         except Exception:
             pass
 
-    return "0.9.0-pre"
+    return "0.9.1-pre"
 
 __version__ = get_version()

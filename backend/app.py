@@ -1,19 +1,26 @@
 import logging
 import base64
+import hashlib
 import io
+import re
 import time
+import requests
+from PIL import Image
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Request, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from backend import config
 from backend.config import BASE_DIR, HOST, PORT, CUSTOM_FONTS_DIR, POSTERS_DIR, FONTS_DIR, STILLS_DIR, PREVIEWS_DIR
 from backend.db import (
     init_db, get_all_shows, get_show, update_show_mode, update_show_style,
     get_setting, set_setting, get_all_settings, bulk_update_show_modes,
-    update_show_tmdb_id, get_all_indexed_libraries
+    update_show_tmdb_id, get_all_indexed_libraries,
+    upsert_movie, get_all_movies as db_get_all_movies, get_movie,
+    record_movie_poster, revert_movie_poster_record,
+    upsert_collection, get_all_collections, get_collection, record_collection_poster
 )
 from backend.sync_manager import SyncManager
 from backend.ai_styler import AIStyler
@@ -250,12 +257,12 @@ def get_font_file(filename: str):
 
 @app.get("/api/plex/libraries")
 def get_plex_libraries():
-    """List all TV libraries available from Plex Media Server with fallback to indexed libraries."""
+    """List all TV and Movie libraries available from Plex Media Server with fallback to indexed libraries."""
     libraries = []
     try:
-        libraries = sync_mgr.plex.get_tv_sections()
+        libraries = sync_mgr.plex.get_all_sections()
     except Exception as e:
-        logger.warning(f"Could not fetch TV sections live from Plex: {e}")
+        logger.warning(f"Could not fetch sections live from Plex: {e}")
         indexed = get_all_indexed_libraries()
         for idx in indexed:
             libraries.append({
@@ -264,28 +271,46 @@ def get_plex_libraries():
                 "type": "show"
             })
 
-    active_lib = get_setting("active_plex_library", None)
-    if not active_lib and libraries:
-        # Default to configured PLEX_TV_LIBRARY if found, else first
-        matching = [lib for lib in libraries if lib["title"].lower() == config.PLEX_TV_LIBRARY.lower()]
-        active_lib = matching[0]["key"] if matching else libraries[0]["key"]
-        set_setting("active_plex_library", str(active_lib))
+    active_tv_lib = get_setting("active_plex_library", None)
+    if not active_tv_lib:
+        tv_libs = [l for l in libraries if l.get("type") == "show"]
+        if tv_libs:
+            matching = [lib for lib in tv_libs if lib["title"].lower() == config.PLEX_TV_LIBRARY.lower()]
+            active_tv_lib = matching[0]["key"] if matching else tv_libs[0]["key"]
+            set_setting("active_plex_library", str(active_tv_lib))
+
+    active_movie_lib = get_setting("active_plex_movie_library", None)
+    if not active_movie_lib:
+        movie_libs = [l for l in libraries if l.get("type") == "movie"]
+        if movie_libs:
+            matching = [lib for lib in movie_libs if lib["title"].lower() == config.PLEX_MOVIE_LIBRARY.lower()]
+            active_movie_lib = matching[0]["key"] if matching else movie_libs[0]["key"]
+            set_setting("active_plex_movie_library", str(active_movie_lib))
 
     return {
         "libraries": libraries,
-        "active_library": active_lib
+        "active_library": active_tv_lib,
+        "active_tv_library": active_tv_lib,
+        "active_movie_library": active_movie_lib
     }
 
 @app.post("/api/plex/libraries/switch")
 def switch_plex_library(payload: dict = Body(...)):
-    """Switch active Plex TV library."""
+    """Switch active Plex TV or Movie library."""
     library_key = str(payload.get("library_key", "")).strip()
+    library_type = payload.get("library_type")
     if not library_key:
         raise HTTPException(status_code=400, detail="library_key is required")
 
-    set_setting("active_plex_library", library_key)
-    logger.info(f"Switched active Plex library to: {library_key}")
+    if library_type == "movie":
+        set_setting("active_plex_movie_library", library_key)
+        logger.info(f"Switched active Plex Movie library to: {library_key}")
+    else:
+        set_setting("active_plex_library", library_key)
+        logger.info(f"Switched active Plex TV library to: {library_key}")
+
     return {"status": "success", "active_library": library_key}
+
 
 @app.get("/api/shows")
 def list_shows(library: Optional[str] = None):
@@ -345,9 +370,29 @@ def get_show_poster(rating_key: str, request: Request):
     if not target_url:
         raise HTTPException(status_code=404, detail="Poster not found")
 
+    r = None
     try:
-        r = requests.get(target_url, timeout=10)
-        if r.status_code == 200:
+        req_headers = {"X-Plex-Token": sync_mgr.plex.token} if any(h in target_url for h in ["127.0.0.1", "localhost", ":32400"]) else {}
+        r = requests.get(target_url, headers=req_headers, timeout=(4, 10))
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as net_err:
+        logger.warning(f"Plex read timed out for show poster {rating_key}: {net_err}. Trying TMDb fallback...")
+        if show and show.get("tmdb_id"):
+            try:
+                details = tmdb.get_show_details(show["tmdb_id"])
+                if details and details.get("poster_url"):
+                    r = requests.get(details["poster_url"], timeout=(3, 8))
+            except Exception as fb_err:
+                logger.warning(f"TMDb fallback failed for show {rating_key}: {fb_err}")
+        if not r:
+            raise HTTPException(status_code=504, detail="Upstream media server timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error requesting poster for show {rating_key}: {e}")
+        raise HTTPException(status_code=502, detail="Failed to connect to poster source")
+
+    try:
+        if r and r.status_code == 200:
             # Resize to web-optimized thumbnail (max width 420px, ~40-60KB) to save 98% bandwidth on Cloudflare Tunnel
             try:
                 with Image.open(io.BytesIO(r.content)) as im:
@@ -366,20 +411,707 @@ def get_show_poster(rating_key: str, request: Request):
                 headers=headers
             )
         else:
-            logger.warning(f"Failed to fetch poster from {target_url}: HTTP {r.status_code}")
-            raise HTTPException(status_code=r.status_code, detail="Could not fetch poster from origin")
+            status = r.status_code if r else 404
+            logger.warning(f"Failed to fetch poster from {target_url}: HTTP {status}")
+            raise HTTPException(status_code=status, detail="Could not fetch poster from origin")
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching poster for show {rating_key}: {e}")
+        logger.error(f"Error processing poster for show {rating_key}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch poster")
 
 @app.post("/api/library/scan")
-def scan_library(library: Optional[str] = None):
-    """Scan Plex server and index all shows for the specified or active library."""
+def scan_library(library: Optional[str] = None, type: Optional[str] = None):
+    """Scan Plex server and index all shows or movies for the specified or active library."""
+    if type == "movie":
+        target = library if library is not None else get_setting("active_plex_movie_library", None)
+        res = sync_mgr.scan_movie_library(target_library=target)
+        return {"status": "success", "type": "movie", **res}
+
     target = library if library is not None else get_setting("active_plex_library", None)
     count = sync_mgr.scan_and_index_library(target_library=target)
-    return {"status": "success", "indexed_shows": count}
+    return {"status": "success", "type": "show", "indexed_shows": count}
+
+@app.post("/api/movies/scan")
+def scan_movies(library: Optional[str] = None):
+    """Scan Plex Movie library."""
+    target = library if library is not None else get_setting("active_plex_movie_library", None)
+    res = sync_mgr.scan_movie_library(target_library=target)
+    return {"status": "success", **res}
+
+@app.get("/api/movies")
+def list_movies(
+    library: Optional[str] = None,
+    collection: Optional[str] = None,
+    sort: str = "title_asc",
+    search: Optional[str] = None
+):
+    """List all indexed movies with optional filtering and sorting."""
+    active_filter = None
+    if library and str(library).lower() != "all":
+        active_filter = str(library)
+
+    movies = db_get_all_movies(library_filter=active_filter, collection_filter=collection, sort_by=sort)
+    if search:
+        s_low = search.strip().lower()
+        movies = [m for m in movies if s_low in m.get("title", "").lower()]
+
+    for m in movies:
+        if m.get("poster_url"):
+            up = m.get("updated_at") or ""
+            ts = int(hashlib.md5(f"{m['rating_key']}_{up}_{m['poster_url']}".encode()).hexdigest()[:8], 16)
+            m["poster_url"] = f"/api/movies/{m['rating_key']}/poster.jpg?v={ts}"
+
+    return {"movies": movies}
+
+@app.get("/api/movies/{rating_key}")
+def get_movie_detail(rating_key: str):
+    """Get single movie record and extra TMDb details if available."""
+    movie = get_movie(rating_key)
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
+
+    if movie.get("poster_url"):
+        up = movie.get("updated_at") or ""
+        ts = int(hashlib.md5(f"{rating_key}_{up}_{movie['poster_url']}".encode()).hexdigest()[:8], 16)
+        movie["poster_url"] = f"/api/movies/{rating_key}/poster.jpg?v={ts}"
+
+    tmdb_details = None
+    if movie.get("tmdb_id"):
+        tmdb_details = sync_mgr.tmdb.get_movie_details(movie["tmdb_id"])
+
+    return {
+        "movie": movie,
+        "tmdb_details": tmdb_details
+    }
+
+@app.get("/api/movies/{rating_key}/poster")
+@app.get("/api/movies/{rating_key}/poster.jpg")
+def get_movie_poster(rating_key: str, request: Request):
+    """Serve optimized, compressed movie poster with local disk caching."""
+    poster_path = POSTERS_DIR / f"movie_{rating_key}.jpg"
+    mtime = int(poster_path.stat().st_mtime) if poster_path.exists() else 0
+    etag = f'"movie_{rating_key}_{mtime}"'
+    headers = {
+        "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
+        "ETag": etag
+    }
+
+    if poster_path.exists():
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers=headers)
+        return FileResponse(poster_path, media_type="image/jpeg", headers=headers)
+
+    movie = get_movie(rating_key)
+    target_url = movie.get("poster_url") if movie else None
+
+    # Fallback to live Plex item if not in DB
+    if not target_url and sync_mgr.plex:
+        try:
+            item = sync_mgr.plex.server.fetchItem(int(rating_key))
+            target_url = item.posterUrl if hasattr(item, "posterUrl") else (item.thumbUrl if hasattr(item, "thumbUrl") else None)
+        except Exception:
+            pass
+
+    # Fallback to TMDb
+    if not target_url and movie and movie.get("tmdb_id"):
+        try:
+            details = sync_mgr.tmdb.get_movie_details(movie["tmdb_id"])
+            if details:
+                target_url = details.get("poster_url")
+        except Exception:
+            pass
+
+    if not target_url:
+        raise HTTPException(status_code=404, detail="Movie poster not found")
+
+    r = None
+    try:
+        req_headers = {"X-Plex-Token": sync_mgr.plex.token} if any(h in target_url for h in ["127.0.0.1", "localhost", ":32400"]) else {}
+        r = requests.get(target_url, headers=req_headers, timeout=(4, 10))
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as net_err:
+        logger.warning(f"Plex read timed out for movie poster {rating_key}: {net_err}. Trying TMDb fallback...")
+        if movie and movie.get("tmdb_id"):
+            try:
+                details = sync_mgr.tmdb.get_movie_details(movie["tmdb_id"])
+                if details and details.get("poster_url"):
+                    r = requests.get(details["poster_url"], timeout=(3, 8))
+            except Exception as fb_err:
+                logger.warning(f"TMDb fallback failed for {rating_key}: {fb_err}")
+        if not r:
+            raise HTTPException(status_code=504, detail="Upstream media server timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error requesting movie poster for {rating_key}: {e}")
+        raise HTTPException(status_code=502, detail="Failed to connect to poster source")
+
+    try:
+        if r and r.status_code == 200:
+            try:
+                from PIL import Image
+                with Image.open(io.BytesIO(r.content)) as im:
+                    if im.width > 420:
+                        new_h = int(im.height * (420.0 / im.width))
+                        im = im.resize((420, new_h), Image.Resampling.LANCZOS)
+                    im.convert("RGB").save(poster_path, format="JPEG", quality=82, optimize=True)
+            except Exception as resize_err:
+                logger.warning(f"Could not resize movie poster: {resize_err}")
+                with open(poster_path, "wb") as f:
+                    f.write(r.content)
+
+            return FileResponse(poster_path, media_type="image/jpeg", headers=headers)
+        else:
+            status = r.status_code if r else 404
+            raise HTTPException(status_code=status, detail="Could not fetch movie poster from origin")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing movie poster for {rating_key}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process movie poster")
+
+@app.get("/api/movies/{rating_key}/posters")
+def get_movie_poster_options(rating_key: str):
+    """Fetch poster options from MediUX and TMDb for a movie."""
+    movie = get_movie(rating_key)
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
+
+    tmdb_id = movie.get("tmdb_id")
+    movie_title = movie.get("title", "")
+    movie_year = movie.get("year")
+    mediux_sets = []
+    tmdb_posters = []
+
+    if tmdb_id:
+        try:
+            raw_sets = sync_mgr.mediux.get_movie_sets(tmdb_id)
+            # Filter out franchise/collection sets so Movie View only shows artwork for THIS movie
+            collection_kws = ["collection", "boxset", "box set", "anthology", "trilogy", "quadrilogy", "saga", "duology", "franchise", "series"]
+            clean_movie = re.sub(r'[^a-z0-9]', '', movie_title.lower())
+
+            for s in raw_sets:
+                s_name_l = s.get("set_name", "").lower()
+                # Skip collection sets
+                if any(kw in s_name_l for kw in collection_kws):
+                    continue
+
+                filtered_posters = []
+                for p in s.get("posters", []):
+                    p_title = p.get("title", "")
+                    p_title_l = p_title.lower()
+                    if any(kw in p_title_l for kw in collection_kws):
+                        continue
+
+                    clean_p = re.sub(r'[^a-z0-9]', '', p_title.lower())
+                    if clean_movie in clean_p or clean_p in clean_movie:
+                        y_match = re.search(r'\b(19\d\d|20\d\d)\b', p_title)
+                        if y_match and movie_year:
+                            p_year = int(y_match.group(1))
+                            if abs(p_year - movie_year) > 1:
+                                continue
+
+                        is_sequel_poster = bool(re.search(r'\b(ii|iii|iv|v|vi|2|3|4|5|6|7|8|part\s*2|part\s*ii)\b', p_title_l))
+                        is_sequel_movie = bool(re.search(r'\b(ii|iii|iv|v|vi|2|3|4|5|6|7|8|part\s*2|part\s*ii)\b', movie_title.lower()))
+                        if is_sequel_poster and not is_sequel_movie:
+                            continue
+
+                        filtered_posters.append(p)
+                    elif not clean_movie:
+                        filtered_posters.append(p)
+
+                if filtered_posters:
+                    s_copy = dict(s)
+                    s_copy["posters"] = filtered_posters
+                    s_copy["poster_url"] = filtered_posters[0]["url"]
+                    mediux_sets.append(s_copy)
+        except Exception as e:
+            logger.warning(f"Failed to fetch MediUX sets for movie {tmdb_id}: {e}")
+
+        try:
+            tmdb_posters = sync_mgr.tmdb.get_movie_posters(tmdb_id)
+        except Exception as e:
+            logger.warning(f"Failed to fetch TMDb posters for movie {tmdb_id}: {e}")
+
+    up = movie.get("updated_at") or ""
+    ts = int(hashlib.md5(f"{rating_key}_{up}_{movie.get('poster_url', '')}".encode()).hexdigest()[:8], 16)
+    return {
+        "rating_key": rating_key,
+        "title": movie.get("title"),
+        "year": movie.get("year"),
+        "tmdb_id": tmdb_id,
+        "current_poster": f"/api/movies/{rating_key}/poster.jpg?v={ts}" if movie.get("poster_url") else None,
+        "mediux_sets": mediux_sets,
+        "tmdb_posters": tmdb_posters
+    }
+
+@app.post("/api/movies/{rating_key}/upload-poster")
+async def upload_movie_poster_endpoint(
+    rating_key: str,
+    file: UploadFile = File(...)
+):
+    """Upload a custom poster image for a movie."""
+    movie = get_movie(rating_key)
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
+
+    try:
+        img = Image.open(io.BytesIO(content))
+        img = img.convert("RGB")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid image file: {e}")
+
+    dest_path = POSTERS_DIR / f"upload_movie_{rating_key}.jpg"
+    img.save(dest_path, "JPEG", quality=95)
+
+    t_nonce = int(time.time())
+    return {
+        "status": "success",
+        "poster_url": f"/api/movies/{rating_key}/uploaded-poster?t={t_nonce}",
+        "file_path": str(dest_path)
+    }
+
+@app.get("/api/movies/{rating_key}/uploaded-poster")
+def get_uploaded_movie_poster(rating_key: str):
+    """Serve the recently uploaded custom poster for a movie."""
+    dest_path = POSTERS_DIR / f"upload_movie_{rating_key}.jpg"
+    if not dest_path.exists():
+        raise HTTPException(status_code=404, detail="Uploaded poster not found")
+    return FileResponse(dest_path, media_type="image/jpeg")
+
+@app.post("/api/movies/{rating_key}/apply-poster")
+def apply_movie_poster(rating_key: str, payload: dict = Body(...)):
+    """Apply a chosen poster URL or uploaded file to the movie in Plex (or simulate if TEST_MODE)."""
+    poster_url = payload.get("poster_url")
+    file_path = payload.get("file_path")
+    source = payload.get("source", "mediux")
+    force_live = payload.get("force_live", False)
+    if not poster_url and not file_path:
+        raise HTTPException(status_code=400, detail="poster_url or file_path is required")
+
+    from backend.config import TEST_MODE, TEST_OUTPUT_DIR
+    is_test = TEST_MODE and not force_live
+
+    movie = get_movie(rating_key)
+    title = movie.get("title", f"movie_{rating_key}") if movie else f"movie_{rating_key}"
+
+    try:
+        # Check if local uploaded file is present
+        local_file = None
+        if file_path and Path(file_path).exists():
+            local_file = Path(file_path)
+        elif poster_url and (POSTERS_DIR / f"upload_movie_{rating_key}.jpg").exists() and "/uploaded-poster" in poster_url:
+            local_file = POSTERS_DIR / f"upload_movie_{rating_key}.jpg"
+
+        if is_test:
+            clean_title = re.sub(r'[^a-zA-Z0-9_\- ]', '', title).strip()
+            test_dir = TEST_OUTPUT_DIR / "Movies" / clean_title
+            test_dir.mkdir(parents=True, exist_ok=True)
+            test_path = test_dir / f"poster_{source}.jpg"
+
+            if local_file:
+                import shutil
+                shutil.copyfile(local_file, test_path)
+            else:
+                req_headers = {"X-Plex-Token": sync_mgr.plex.token} if any(h in poster_url for h in ["127.0.0.1", "localhost", ":32400"]) else {}
+                r = requests.get(poster_url, headers=req_headers, timeout=10)
+                if r.status_code == 200:
+                    with open(test_path, "wb") as f:
+                        f.write(r.content)
+            logger.info(f"🧪 [TEST MODE] Saved movie poster to {test_path} without uploading to Plex.")
+            return {
+                "status": "success",
+                "test_mode": True,
+                "message": f"🧪 Test Mode: Saved poster locally to cache/test_output/ without modifying Plex.",
+                "poster_url": poster_url or f"/api/movies/{rating_key}/uploaded-poster"
+            }
+        else:
+            if local_file:
+                sync_mgr.plex.upload_movie_poster(rating_key, str(local_file), force_live=force_live)
+                record_movie_poster(rating_key, f"/api/movies/{rating_key}/poster.jpg?v={int(time.time())}", source=source)
+                import shutil
+                shutil.copyfile(local_file, POSTERS_DIR / f"movie_{rating_key}.jpg")
+            else:
+                sync_mgr.plex.upload_movie_poster(rating_key, poster_url, force_live=force_live)
+                record_movie_poster(rating_key, poster_url, source=source)
+                # Invalidate local cached poster
+                cached_file = POSTERS_DIR / f"movie_{rating_key}.jpg"
+                if cached_file.exists():
+                    try:
+                        cached_file.unlink()
+                    except Exception:
+                        pass
+
+            return {
+                "status": "success",
+                "test_mode": False,
+                "message": "Poster successfully applied to movie in Plex",
+                "poster_url": f"/api/movies/{rating_key}/poster.jpg?t={int(time.time())}"
+            }
+    except Exception as e:
+        logger.error(f"Failed to apply poster to movie {rating_key}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/movies/{rating_key}/revert-poster")
+def revert_movie_poster_endpoint(rating_key: str, payload: dict = Body(default={})):
+    """Revert a movie poster back to Plex default."""
+    force_live = payload.get("force_live", False)
+    from backend.config import TEST_MODE
+    is_test = TEST_MODE and not force_live
+
+    try:
+        if is_test:
+            logger.info(f"🧪 [TEST MODE] Skipped reverting movie ID {rating_key} in Plex.")
+            return {
+                "status": "success",
+                "test_mode": True,
+                "message": "🧪 Test Mode: Revert simulated without modifying Plex."
+            }
+        else:
+            sync_mgr.plex.revert_movie_poster(rating_key, force_live=force_live)
+            revert_movie_poster_record(rating_key)
+
+            cached_file = POSTERS_DIR / f"movie_{rating_key}.jpg"
+            if cached_file.exists():
+                try:
+                    cached_file.unlink()
+                except Exception:
+                    pass
+
+            return {
+                "status": "success",
+                "test_mode": False,
+                "message": "Poster reverted to default in Plex"
+            }
+    except Exception as e:
+        logger.error(f"Failed to revert movie poster {rating_key}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/collections")
+def list_collections(library: Optional[str] = None):
+    """List all movie collections with child movie counts."""
+    active_filter = None
+    if library and str(library).lower() != "all":
+        active_filter = str(library)
+
+    colls = get_all_collections(library_filter=active_filter)
+    for c in colls:
+        if c.get("poster_url"):
+            up = c.get("updated_at") or ""
+            ts = int(hashlib.md5(f"{c['rating_key']}_{up}_{c['poster_url']}".encode()).hexdigest()[:8], 16)
+            c["poster_url"] = f"/api/collections/{c['rating_key']}/poster.jpg?v={ts}"
+
+    return {"collections": colls}
+
+@app.get("/api/collections/{rating_key}")
+def get_collection_detail(rating_key: str):
+    """Get collection details along with member movies."""
+    coll = get_collection(rating_key)
+    if not coll:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    up = coll.get("updated_at") or ""
+    ts = int(hashlib.md5(f"{rating_key}_{up}_{coll.get('poster_url', '')}".encode()).hexdigest()[:8], 16)
+    if coll.get("poster_url"):
+        coll["poster_url"] = f"/api/collections/{rating_key}/poster.jpg?v={ts}"
+
+    movies = db_get_all_movies(collection_filter=coll["title"])
+    for m in movies:
+        if m.get("poster_url"):
+            m_up = m.get("updated_at") or ""
+            m_ts = int(hashlib.md5(f"{m['rating_key']}_{m_up}_{m['poster_url']}".encode()).hexdigest()[:8], 16)
+            m["poster_url"] = f"/api/movies/{m['rating_key']}/poster.jpg?v={m_ts}"
+
+    return {
+        "collection": coll,
+        "movies": movies
+    }
+
+@app.get("/api/collections/{rating_key}/poster")
+@app.get("/api/collections/{rating_key}/poster.jpg")
+def get_collection_poster_endpoint(rating_key: str, request: Request):
+    """Serve cached collection poster."""
+    poster_path = POSTERS_DIR / f"coll_{rating_key}.jpg"
+    mtime = int(poster_path.stat().st_mtime) if poster_path.exists() else 0
+    etag = f'"coll_{rating_key}_{mtime}"'
+    headers = {
+        "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
+        "ETag": etag
+    }
+
+    if poster_path.exists():
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers=headers)
+        return FileResponse(poster_path, media_type="image/jpeg", headers=headers)
+
+    coll = get_collection(rating_key)
+    target_url = coll.get("poster_url") if coll else None
+
+    if not target_url and sync_mgr.plex:
+        try:
+            item = sync_mgr.plex.server.fetchItem(int(rating_key))
+            target_url = item.posterUrl if hasattr(item, "posterUrl") else (item.thumbUrl if hasattr(item, "thumbUrl") else None)
+        except Exception:
+            pass
+
+    if not target_url:
+        raise HTTPException(status_code=404, detail="Collection poster not found")
+
+    r = None
+    try:
+        from PIL import Image
+        req_headers = {"X-Plex-Token": sync_mgr.plex.token} if any(h in target_url for h in ["127.0.0.1", "localhost", ":32400"]) else {}
+        r = requests.get(target_url, headers=req_headers, timeout=(4, 10))
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as net_err:
+        logger.warning(f"Plex read timed out for collection poster {rating_key}: {net_err}")
+        raise HTTPException(status_code=504, detail="Upstream media server timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error requesting collection poster for {rating_key}: {e}")
+        raise HTTPException(status_code=502, detail="Failed to connect to collection poster source")
+
+    try:
+        if r and r.status_code == 200:
+            try:
+                with Image.open(io.BytesIO(r.content)) as im:
+                    if im.width > 420:
+                        new_h = int(im.height * (420.0 / im.width))
+                        im = im.resize((420, new_h), Image.Resampling.LANCZOS)
+                    im.convert("RGB").save(poster_path, format="JPEG", quality=82, optimize=True)
+            except Exception as resize_err:
+                logger.warning(f"Could not resize collection poster: {resize_err}")
+                with open(poster_path, "wb") as f:
+                    f.write(r.content)
+
+            return FileResponse(poster_path, media_type="image/jpeg", headers=headers)
+        else:
+            status = r.status_code if r else 404
+            raise HTTPException(status_code=status, detail="Could not fetch collection poster")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing collection poster for {rating_key}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch collection poster")
+
+@app.get("/api/collections/{rating_key}/posters")
+def get_collection_posters_endpoint(rating_key: str):
+    """Fetch franchise sets from MediUX and TMDb for a collection."""
+    coll = get_collection(rating_key)
+    if not coll:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    movies = db_get_all_movies(collection_filter=coll["title"])
+    for m in movies:
+        if m.get("poster_url"):
+            m["poster_url"] = f"/api/movies/{m['rating_key']}/poster.jpg"
+
+    tmdb_coll_id = coll.get("tmdb_collection_id")
+
+    # 1. Auto-resolve tmdb_collection_id if not present
+    if not tmdb_coll_id:
+        movie_tmdb_ids = [m["tmdb_id"] for m in movies if m.get("tmdb_id")]
+        for m_id in movie_tmdb_ids:
+            try:
+                m_details = sync_mgr.tmdb.get_movie_details(m_id)
+                if m_details and m_details.get("collection") and m_details["collection"].get("id"):
+                    tmdb_coll_id = m_details["collection"]["id"]
+                    break
+            except Exception as e:
+                logger.debug(f"Could not get collection info from movie {m_id}: {e}")
+
+        if not tmdb_coll_id:
+            try:
+                search_res = sync_mgr.tmdb.search_collection(coll["title"])
+                if search_res:
+                    tmdb_coll_id = search_res[0]["id"]
+            except Exception as e:
+                logger.debug(f"Could not search TMDb collection for {coll['title']}: {e}")
+
+        if tmdb_coll_id:
+            coll["tmdb_collection_id"] = tmdb_coll_id
+            upsert_collection(coll)
+
+    mediux_sets = []
+    tmdb_posters = []
+
+    # 2. Fetch TMDb collection posters & MediUX boxsets if ID resolved
+    if tmdb_coll_id:
+        try:
+            tmdb_posters = sync_mgr.tmdb.get_collection_posters(tmdb_coll_id)
+        except Exception as e:
+            logger.warning(f"Failed to fetch TMDb posters for collection {tmdb_coll_id}: {e}")
+
+        try:
+            mediux_sets = sync_mgr.mediux.get_collection_sets(tmdb_coll_id)
+        except Exception as e:
+            logger.warning(f"Failed to fetch MediUX sets for collection {tmdb_coll_id}: {e}")
+
+    # 3. Enhanced MediUX discovery: Check franchise sets on member movies
+    # MediUX creators frequently attach franchise sets directly to the movies in the series.
+    if not mediux_sets:
+        seen_set_ids = set()
+        movie_tmdb_ids = [m["tmdb_id"] for m in movies if m.get("tmdb_id")]
+        for m_id in movie_tmdb_ids:
+            try:
+                m_sets = sync_mgr.mediux.get_movie_sets(m_id)
+                for ms in m_sets:
+                    if ms["id"] in seen_set_ids:
+                        continue
+                    seen_set_ids.add(ms["id"])
+
+                    # If this set has multiple posters or mentions collection/series, treat as franchise set
+                    set_posters = ms.get("posters", [])
+                    if len(set_posters) > 1 or any(w in ms.get("set_name", "").lower() for w in ["collection", "series", "trilogy", "quadrilogy", "saga", "boxset"]):
+                        boxset_url = None
+                        movie_posters = []
+                        for p in set_posters:
+                            if any(w in p["title"].lower() for w in ["collection", "boxset", "series", "trilogy", "quadrilogy", "saga"]):
+                                if not boxset_url:
+                                    boxset_url = p["url"]
+                            else:
+                                movie_posters.append(p)
+
+                        if not boxset_url and ms.get("poster_url"):
+                            boxset_url = ms["poster_url"]
+
+                        mediux_sets.append({
+                            "id": ms["id"],
+                            "set_name": ms["set_name"],
+                            "creator": ms["creator"],
+                            "date_updated": ms["date_updated"],
+                            "set_url": ms["set_url"],
+                            "collection_poster_url": boxset_url,
+                            "movie_posters": movie_posters or set_posters
+                        })
+            except Exception as e:
+                logger.debug(f"Error checking MediUX movie sets for movie {m_id}: {e}")
+
+    return {
+        "rating_key": rating_key,
+        "title": coll.get("title"),
+        "tmdb_collection_id": tmdb_coll_id,
+        "applied_mediux_set_id": coll.get("applied_mediux_set_id"),
+        "movies": movies,
+        "mediux_sets": mediux_sets,
+        "tmdb_posters": tmdb_posters
+    }
+
+@app.post("/api/collections/{rating_key}/apply-set")
+def apply_collection_set(rating_key: str, payload: dict = Body(...)):
+    """Batch apply franchise collection artwork: collection poster and/or child movie posters."""
+    coll_poster_url = payload.get("collection_poster_url")
+    movie_posters = payload.get("movie_posters", [])
+    mediux_set_id = payload.get("mediux_set_id")
+    force_live = payload.get("force_live", False)
+
+    from backend.config import TEST_MODE, TEST_OUTPUT_DIR
+    is_test = TEST_MODE and not force_live
+
+    coll = get_collection(rating_key)
+    coll_title = coll.get("title", f"collection_{rating_key}") if coll else f"collection_{rating_key}"
+
+    applied_count = 0
+    errors = []
+
+    if is_test:
+        clean_title = re.sub(r'[^a-zA-Z0-9_\- ]', '', coll_title).strip()
+        test_dir = TEST_OUTPUT_DIR / "Collections" / clean_title
+        test_dir.mkdir(parents=True, exist_ok=True)
+
+        if coll_poster_url:
+            try:
+                req_headers = {"X-Plex-Token": sync_mgr.plex.token} if any(h in coll_poster_url for h in ["127.0.0.1", "localhost", ":32400"]) else {}
+                r = requests.get(coll_poster_url, headers=req_headers, timeout=10)
+                if r.status_code == 200:
+                    with open(test_dir / "boxset_cover.jpg", "wb") as f:
+                        f.write(r.content)
+                applied_count += 1
+            except Exception as e:
+                errors.append(f"Failed to test-save collection boxset: {e}")
+
+        for idx, mp in enumerate(movie_posters):
+            m_url = mp.get("poster_url")
+            m_rk = mp.get("movie_rating_key")
+            if m_url:
+                try:
+                    r = requests.get(m_url, timeout=10)
+                    if r.status_code == 200:
+                        with open(test_dir / f"movie_{m_rk or idx}.jpg", "wb") as f:
+                            f.write(r.content)
+                    applied_count += 1
+                except Exception:
+                    pass
+
+        logger.info(f"🧪 [TEST MODE] Saved {applied_count} franchise collection posters to {test_dir} without modifying Plex.")
+        return {
+            "status": "success",
+            "test_mode": True,
+            "applied_count": applied_count,
+            "errors": errors,
+            "message": f"🧪 Test Mode: Saved {applied_count} franchise posters locally to cache/test_output/ without modifying Plex."
+        }
+
+    # Live Mode: upload to Plex and update local database
+    # 1. Apply collection boxset poster
+    if coll_poster_url:
+        try:
+            sync_mgr.plex.upload_collection_poster(rating_key, coll_poster_url, force_live=force_live)
+            record_collection_poster(rating_key, coll_poster_url, mediux_set_id=mediux_set_id)
+            applied_count += 1
+
+            cached_file = POSTERS_DIR / f"coll_{rating_key}.jpg"
+            if cached_file.exists():
+                try:
+                    cached_file.unlink()
+                except Exception:
+                    pass
+
+            # Pre-cache the new image right away so browser gets it immediately
+            try:
+                req_headers = {"X-Plex-Token": sync_mgr.plex.token} if any(h in coll_poster_url for h in ["127.0.0.1", "localhost", ":32400"]) else {}
+                r = requests.get(coll_poster_url, headers=req_headers, timeout=10)
+                if r.status_code == 200:
+                    from PIL import Image
+                    with Image.open(io.BytesIO(r.content)) as im:
+                        if im.width > 420:
+                            new_h = int(im.height * (420.0 / im.width))
+                            im = im.resize((420, new_h), Image.Resampling.LANCZOS)
+                        im.convert("RGB").save(cached_file, format="JPEG", quality=82, optimize=True)
+            except Exception as cache_err:
+                logger.debug(f"Could not pre-cache collection poster: {cache_err}")
+        except Exception as e:
+            errors.append(f"Failed to apply collection poster: {e}")
+
+    # 2. Apply each child movie poster
+    for mp in movie_posters:
+        m_rk = mp.get("movie_rating_key")
+        m_url = mp.get("poster_url")
+        if m_rk and m_url:
+            try:
+                sync_mgr.plex.upload_movie_poster(m_rk, m_url, force_live=force_live)
+                record_movie_poster(m_rk, m_url, source="mediux_franchise_set")
+                applied_count += 1
+
+                cached_file = POSTERS_DIR / f"movie_{m_rk}.jpg"
+                if cached_file.exists():
+                    try:
+                        cached_file.unlink()
+                    except Exception:
+                        pass
+            except Exception as e:
+                errors.append(f"Failed to apply movie poster {m_rk}: {e}")
+
+    return {
+        "status": "success",
+        "test_mode": False,
+        "applied_count": applied_count,
+        "errors": errors
+    }
 
 @app.get("/api/shows/{rating_key}")
 def get_show_details(rating_key: str):

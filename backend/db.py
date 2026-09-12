@@ -182,6 +182,53 @@ def init_db():
     )
     """)
 
+    # Movies table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS movies (
+        rating_key TEXT PRIMARY KEY,
+        tmdb_id INTEGER,
+        imdb_id TEXT,
+        title TEXT NOT NULL,
+        year INTEGER,
+        duration INTEGER,
+        summary TEXT,
+        poster_url TEXT,
+        backdrop_url TEXT,
+        collection_rating_key TEXT,
+        collection_name TEXT,
+        has_custom_poster INTEGER DEFAULT 0,
+        custom_poster_url TEXT,
+        custom_poster_source TEXT,
+        library_section_id TEXT,
+        library_name TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # Movie Collections table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS movie_collections (
+        rating_key TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        tmdb_collection_id INTEGER,
+        poster_url TEXT,
+        movie_count INTEGER DEFAULT 0,
+        applied_mediux_set_id TEXT,
+        library_section_id TEXT,
+        library_name TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # Safe column migrations for movie_collections table
+    cursor.execute("PRAGMA table_info(movie_collections)")
+    coll_columns = [col[1] for col in cursor.fetchall()]
+    if "applied_mediux_set_id" not in coll_columns:
+        cursor.execute("ALTER TABLE movie_collections ADD COLUMN applied_mediux_set_id TEXT")
+
+
     # App settings key-value store
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS settings (
@@ -794,6 +841,195 @@ def get_effective_style(rating_key: str, season_number: Optional[int] = None) ->
             base_style["has_season_override"] = True
             base_style["override_season_number"] = season_number
     return base_style
+
+def upsert_movie(movie_data: Dict[str, Any]):
+    """Insert or update a movie record."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO movies (
+            rating_key, tmdb_id, imdb_id, title, year, duration, summary,
+            poster_url, backdrop_url, collection_rating_key, collection_name,
+            library_section_id, library_name, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(rating_key) DO UPDATE SET
+            tmdb_id = COALESCE(excluded.tmdb_id, movies.tmdb_id),
+            imdb_id = COALESCE(excluded.imdb_id, movies.imdb_id),
+            title = excluded.title,
+            year = excluded.year,
+            duration = excluded.duration,
+            summary = excluded.summary,
+            poster_url = excluded.poster_url,
+            backdrop_url = excluded.backdrop_url,
+            collection_rating_key = excluded.collection_rating_key,
+            collection_name = excluded.collection_name,
+            library_section_id = excluded.library_section_id,
+            library_name = excluded.library_name,
+            updated_at = CURRENT_TIMESTAMP
+    """, (
+        str(movie_data["rating_key"]),
+        movie_data.get("tmdb_id"),
+        movie_data.get("imdb_id"),
+        movie_data["title"],
+        movie_data.get("year"),
+        movie_data.get("duration"),
+        movie_data.get("summary"),
+        movie_data.get("poster_url"),
+        movie_data.get("backdrop_url"),
+        movie_data.get("collection_rating_key"),
+        movie_data.get("collection_name"),
+        movie_data.get("library_section_id"),
+        movie_data.get("library_name")
+    ))
+    conn.commit()
+    conn.close()
+
+def get_all_movies(
+    library_filter: Optional[str] = None,
+    collection_filter: Optional[str] = None,
+    sort_by: str = "title_asc"
+) -> List[Dict[str, Any]]:
+    """Retrieve all movies with optional library or collection filtering and sorting."""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    query = "SELECT * FROM movies WHERE 1=1"
+    params = []
+    
+    if library_filter and library_filter.lower() != "all":
+        query += " AND library_section_id = ?"
+        params.append(str(library_filter))
+        
+    if collection_filter:
+        query += " AND (collection_rating_key = ? OR collection_name = ?)"
+        params.extend([str(collection_filter), str(collection_filter)])
+        
+    if sort_by == "title_desc":
+        query += " ORDER BY title COLLATE NOCASE DESC"
+    elif sort_by == "year_desc":
+        query += " ORDER BY year DESC, title COLLATE NOCASE ASC"
+    elif sort_by == "year_asc":
+        query += " ORDER BY year ASC, title COLLATE NOCASE ASC"
+    elif sort_by == "recently_added":
+        query += " ORDER BY updated_at DESC"
+    else:  # Default: title_asc
+        query += " ORDER BY title COLLATE NOCASE ASC"
+        
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def get_movie(rating_key: str) -> Optional[Dict[str, Any]]:
+    """Retrieve a single movie by Plex rating_key."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM movies WHERE rating_key = ?", (str(rating_key),))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def record_movie_poster(rating_key: str, poster_url: str, source: str = "mediux"):
+    """Mark a movie as having a custom poster applied."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE movies
+        SET has_custom_poster = 1,
+            custom_poster_url = ?,
+            custom_poster_source = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE rating_key = ?
+    """, (poster_url, source, str(rating_key)))
+    conn.commit()
+    conn.close()
+
+def revert_movie_poster_record(rating_key: str):
+    """Revert custom poster status on a movie."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE movies
+        SET has_custom_poster = 0,
+            custom_poster_url = NULL,
+            custom_poster_source = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE rating_key = ?
+    """, (str(rating_key),))
+    conn.commit()
+    conn.close()
+
+def upsert_collection(coll_data: Dict[str, Any]):
+    """Insert or update a movie collection record."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO movie_collections (
+            rating_key, title, tmdb_collection_id, poster_url,
+            movie_count, applied_mediux_set_id, library_section_id, library_name, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(rating_key) DO UPDATE SET
+            title = excluded.title,
+            tmdb_collection_id = COALESCE(excluded.tmdb_collection_id, movie_collections.tmdb_collection_id),
+            poster_url = excluded.poster_url,
+            movie_count = excluded.movie_count,
+            applied_mediux_set_id = COALESCE(excluded.applied_mediux_set_id, movie_collections.applied_mediux_set_id),
+            library_section_id = excluded.library_section_id,
+            library_name = excluded.library_name,
+            updated_at = CURRENT_TIMESTAMP
+    """, (
+        str(coll_data["rating_key"]),
+        coll_data["title"],
+        coll_data.get("tmdb_collection_id"),
+        coll_data.get("poster_url"),
+        coll_data.get("movie_count", 0),
+        coll_data.get("applied_mediux_set_id"),
+        coll_data.get("library_section_id"),
+        coll_data.get("library_name")
+    ))
+    conn.commit()
+    conn.close()
+
+def get_all_collections(library_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve all movie collections with optional library filter."""
+    conn = get_db()
+    cursor = conn.cursor()
+    query = "SELECT * FROM movie_collections WHERE 1=1"
+    params = []
+    if library_filter and library_filter.lower() != "all":
+        query += " AND library_section_id = ?"
+        params.append(str(library_filter))
+    query += " ORDER BY title COLLATE NOCASE ASC"
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def get_collection(rating_key: str) -> Optional[Dict[str, Any]]:
+    """Retrieve a single collection by rating_key."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM movie_collections WHERE rating_key = ?", (str(rating_key),))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def record_collection_poster(rating_key: str, poster_url: str, mediux_set_id: Optional[str] = None):
+    """Update custom poster URL and applied set ID for a movie collection."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE movie_collections
+        SET poster_url = ?,
+            applied_mediux_set_id = COALESCE(?, applied_mediux_set_id),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE rating_key = ?
+    """, (poster_url, mediux_set_id, str(rating_key)))
+    conn.commit()
+    conn.close()
+
 
 
 

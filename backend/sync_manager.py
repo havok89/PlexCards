@@ -7,7 +7,9 @@ import requests
 from backend.db import (
     init_db, get_db, upsert_show, get_show, get_all_shows, get_setting,
     get_show_season_posters, record_season_poster, update_show_mode,
-    get_effective_style
+    get_effective_style, upsert_movie, get_all_movies as db_get_all_movies,
+    get_movie, record_movie_poster, revert_movie_poster_record,
+    upsert_collection, get_all_collections, get_collection, record_collection_poster
 )
 from backend.plex_client import PlexClient
 from backend.tmdb_client import TMDbClient
@@ -26,6 +28,38 @@ class SyncManager:
         self.tvdb = TVDbClient()
         self.mediux = MediuxClient()
         self.renderer = TitleCardRenderer()
+
+    def scan_movie_library(self, target_library: Optional[str] = None) -> Dict[str, Any]:
+        """Scan Plex movie libraries, indexing movies and collections into SQLite."""
+        logger.info("Scanning Plex Movie library...")
+        if target_library and str(target_library).lower() == "all":
+            all_sections = self.plex.get_movie_sections()
+            movies = []
+            collections = []
+            for sec in all_sections:
+                try:
+                    m_list = self.plex.get_all_movies(target_library=sec["key"])
+                    c_list = self.plex.get_movie_collections(target_library=sec["key"])
+                    movies.extend(m_list)
+                    collections.extend(c_list)
+                except Exception as e:
+                    logger.warning(f"Failed to scan movie section {sec.get('title')}: {e}")
+        else:
+            movies = self.plex.get_all_movies(target_library=target_library)
+            collections = self.plex.get_movie_collections(target_library=target_library)
+
+        for m in movies:
+            upsert_movie(m)
+
+        for c in collections:
+            upsert_collection(c)
+
+        logger.info(f"✓ Movie library scan complete: indexed {len(movies)} movies and {len(collections)} collections.")
+        return {
+            "total_movies": len(movies),
+            "total_collections": len(collections)
+        }
+
 
     def get_episode_backdrop_still(self, show: Dict[str, Any], ep: Dict[str, Any]) -> Optional[Path]:
         """
