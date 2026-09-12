@@ -308,7 +308,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-dark-950 text-gray-200">
+    <div className="min-h-screen flex flex-col bg-dark-950 text-gray-200 overflow-x-hidden">
       <Navbar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -342,25 +342,25 @@ export const App: React.FC = () => {
             <div className="flex items-center gap-1 bg-dark-950 p-1 rounded-xl border border-gray-800">
               <button
                 onClick={() => setMovieSubView('movies')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold transition ${
                   movieSubView === 'movies'
                     ? 'bg-brand-500 text-dark-950 shadow-md shadow-brand-500/20'
                     : 'text-gray-400 hover:text-white hover:bg-dark-850'
                 }`}
               >
                 <Film className="w-3.5 h-3.5" />
-                <span>All Movies ({movies.length})</span>
+                <span><span className="sm:hidden">Movies</span><span className="hidden sm:inline">All Movies</span> ({movies.length})</span>
               </button>
               <button
                 onClick={() => setMovieSubView('collections')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold transition ${
                   movieSubView === 'collections'
                     ? 'bg-brand-500 text-dark-950 shadow-md shadow-brand-500/20'
                     : 'text-gray-400 hover:text-white hover:bg-dark-850'
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>Franchise Collections ({collections.length})</span>
+                <span><span className="sm:hidden">Collections</span><span className="hidden sm:inline">Franchise Collections</span> ({collections.length})</span>
               </button>
             </div>
 
