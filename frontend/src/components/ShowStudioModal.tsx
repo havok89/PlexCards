@@ -242,9 +242,10 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
 
   const handleSelectSet = async (selectedSet: MediuxSet | null) => {
     const newUrl = selectedSet ? selectedSet.set_url : undefined;
-    setActiveShow((prev) => ({ ...prev, mediux_set_url: newUrl }));
+    const newMode = activeShow.mode === 'ignored' ? 'auto' : activeShow.mode;
+    setActiveShow((prev) => ({ ...prev, mediux_set_url: newUrl, mode: newMode }));
     try {
-      await api.setMode(activeShow.rating_key, activeShow.mode, newUrl);
+      await api.setMode(activeShow.rating_key, newMode, newUrl);
       if (selectedSet) {
         showToast({
           type: 'success',
@@ -611,6 +612,13 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         });
       }
 
+      // If show was ignored and this is live upload, promote to active mode
+      if (activeShow.mode === 'ignored' && isForceLive) {
+        const newMode = isShowingMediux ? 'auto' : 'generator_only';
+        setActiveShow((prev) => ({ ...prev, mode: newMode }));
+        await api.setMode(activeShow.rating_key, newMode, activeShow.mediux_set_url);
+      }
+
       // Update local episode in state
       setEpisodes((prev) =>
         prev.map((ep) =>
@@ -648,38 +656,59 @@ export const ShowStudioModal: React.FC<ShowStudioModalProps> = ({
         ai_prompt: aiReasoning
       });
 
+      // If show was currently set to ignored, promote it to active mode
+      let currentMode = activeShow.mode;
+      if (currentMode === 'ignored') {
+        currentMode = (selectedSetId || activeShow.mediux_set_url || availableSets.length > 0)
+          ? 'auto'
+          : 'generator_only';
+        setActiveShow((prev) => ({ ...prev, mode: currentMode }));
+        await api.setMode(activeShow.rating_key, currentMode, activeShow.mediux_set_url);
+      }
+
       // 2. Apply cards with selected scope and mode, tracking progress
       const res = await api.applyCards(
         activeShow.rating_key,
         {
           force_all: updateScope === 'all',
-          force_live: isForceLive
+          force_live: isForceLive,
+          source_mode: currentMode
         },
         (progress) => {
           setApplyProgress(progress);
         }
       );
 
+      if (res.status === 'skipped') {
+        showToast({
+          type: 'warning',
+          title: 'Show Skipped',
+          message: res.message || 'Show is set to ignored. Switch mode to Auto or Generator to update cards.'
+        });
+        return;
+      }
+
+      const count = typeof res.updated_cards === 'number' ? res.updated_cards : 0;
       const posterNote = res.updated_season_posters ? ` and ${res.updated_season_posters} season posters` : '';
       if (res.test_mode) {
         showToast({
           type: 'info',
           title: '🧪 Test Mode Simulation',
-          message: `Rendered ${res.updated_cards} cards${posterNote} locally to cache/test_output/. Check 'Live Upload' to push to Plex.`
+          message: `Rendered ${count} cards${posterNote} locally to cache/test_output/. Check 'Live Upload' to push to Plex.`
         });
       } else {
         showToast({
           type: 'success',
           title: 'Plex Updated',
-          message: `Successfully updated ${res.updated_cards} episode cards${posterNote} in Plex!`
+          message: `Successfully updated ${count} episode cards${posterNote} in Plex!`
         });
       }
       onShowUpdated();
-    } catch (e) {
+    } catch (e: any) {
       showToast({
         type: 'error',
         title: 'Update Failed',
-        message: String(e)
+        message: e.message || String(e)
       });
     } finally {
       setIsApplying(false);

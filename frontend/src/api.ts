@@ -80,7 +80,7 @@ export const api = {
 
   async applyCards(
     ratingKey: string,
-    options?: { force_all?: boolean; force_live?: boolean },
+    options?: { force_all?: boolean; force_live?: boolean; source_mode?: string },
     onProgress?: (progress: { current: number; total: number; label?: string; message?: string }) => void
   ): Promise<{
     status: string;
@@ -110,6 +110,7 @@ export const api = {
     const decoder = new TextDecoder();
     let buffer = '';
     let finalResult: any = null;
+    let streamError: Error | null = null;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -132,12 +133,16 @@ export const api = {
           } else if (data.type === 'done') {
             finalResult = data.result;
           } else if (data.type === 'error') {
-            throw new Error(data.message || 'Error occurred while updating');
+            streamError = new Error(data.message || 'Error occurred while updating');
           }
         } catch (err) {
           console.error('Error parsing progress line:', err);
         }
       }
+    }
+
+    if (streamError) {
+      throw streamError;
     }
 
     return finalResult || { status: 'success', updated_cards: 0, message: 'Completed' };

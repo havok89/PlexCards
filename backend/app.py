@@ -911,7 +911,8 @@ def apply_cards_to_show(rating_key: str, payload: dict = Body(default={})):
     """Download or generate cards and upload them to Plex for this show."""
     force_all = payload.get("force_all", True)
     force_live = payload.get("force_live", False)
-    res = sync_mgr.sync_show(rating_key, force_all=force_all, force_live=force_live)
+    source_mode = payload.get("source_mode")
+    res = sync_mgr.sync_show(rating_key, force_all=force_all, force_live=force_live, source_mode=source_mode)
     return res
 
 @app.post("/api/shows/{rating_key}/apply-stream")
@@ -920,9 +921,10 @@ def apply_cards_to_show_stream(rating_key: str, payload: dict = Body(default={})
     import json
     force_all = payload.get("force_all", True)
     force_live = payload.get("force_live", False)
+    source_mode = payload.get("source_mode")
 
     def event_stream():
-        for event in sync_mgr.sync_show_generator(rating_key, force_all=force_all, force_live=force_live):
+        for event in sync_mgr.sync_show_generator(rating_key, force_all=force_all, force_live=force_live, source_mode=source_mode):
             yield json.dumps(event) + "\n"
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")

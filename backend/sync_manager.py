@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import requests
 
-from backend.db import init_db, get_db, upsert_show, get_show, get_all_shows, get_setting, get_show_season_posters, record_season_poster
+from backend.db import init_db, get_db, upsert_show, get_show, get_all_shows, get_setting, get_show_season_posters, record_season_poster, update_show_mode
 from backend.plex_client import PlexClient
 from backend.tmdb_client import TMDbClient
 from backend.tvdb_client import TVDbClient
@@ -312,7 +312,13 @@ class SyncManager:
         conn.close()
         logger.info(f"Updated status for {updated_count} shows (prioritizing {priority.upper()}).")
 
-    def sync_show_generator(self, rating_key: str, force_all: bool = True, force_live: bool = False):
+    def sync_show_generator(
+        self,
+        rating_key: str,
+        force_all: bool = True,
+        force_live: bool = False,
+        source_mode: Optional[str] = None
+    ):
         """Generator that yields progress events while updating cards and posters for a show."""
         show = get_show(rating_key)
         if not show:
@@ -326,14 +332,67 @@ class SyncManager:
         except Exception:
             pass
 
-        mode = show.get("mode", "auto")
+        mode = source_mode or show.get("mode", "auto")
+        is_test = TEST_MODE and not force_live
+
         if mode == "ignored":
-            yield {"type": "done", "result": {"status": "skipped", "message": "Show is set to ignored"}}
+            # If the user explicitly called apply/simulate on this show, automatically activate it
+            if force_all or source_mode is not None:
+                has_mediux = bool(show.get("mediux_set_url")) or bool(
+                    self.mediux.get_show_sets(show.get("tmdb_id")) if show.get("tmdb_id") else False
+                )
+                mode = "auto" if has_mediux else "generator_only"
+                if force_live:
+                    update_show_mode(rating_key, mode, show.get("mediux_set_url"))
+                logger.info(f"Show '{show['title']}' was 'ignored' but explicit apply was triggered; running as '{mode}'.")
+            else:
+                yield {
+                    "type": "done",
+                    "result": {
+                        "status": "skipped",
+                        "test_mode": is_test,
+                        "force_live": force_live,
+                        "force_all": force_all,
+                        "mode": mode,
+                        "updated_cards": 0,
+                        "updated_season_posters": 0,
+                        "message": f"Show '{show['title']}' is set to ignored."
+                    }
+                }
+                return
+
+        episodes = []
+        try:
+            episodes = self.plex.get_show_episodes(rating_key)
+        except Exception as e:
+            logger.warning(f"Could not fetch episodes from Plex API for show {rating_key}: {e}. Falling back to database episodes.")
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT rating_key, season_number, episode_number, title FROM episodes WHERE show_rating_key = ? ORDER BY season_number, episode_number",
+                (rating_key,)
+            )
+            episodes = [dict(r) for r in cursor.fetchall()]
+            conn.close()
+
+        if not episodes:
+            yield {"type": "progress", "current": 0, "total": 0, "label": "", "message": "No episodes found for this show."}
+            yield {
+                "type": "done",
+                "result": {
+                    "status": "success",
+                    "test_mode": is_test,
+                    "force_live": force_live,
+                    "force_all": force_all,
+                    "mode": mode,
+                    "updated_cards": 0,
+                    "updated_season_posters": 0,
+                    "message": "No episodes found for this show."
+                }
+            }
             return
 
-        episodes = self.plex.get_show_episodes(rating_key)
         tmdb_id = show.get("tmdb_id")
-        is_test = TEST_MODE and not force_live
 
         # Fetch existing card statuses from DB for 'missing only' filtering
         conn = get_db()
@@ -437,6 +496,28 @@ class SyncManager:
         # MODE 2: AUTO (Check MediUX for full season sets, fallback to generator)
         # ----------------------------------------------------
         logger.info(f"Running Auto mode for '{show['title']}' (force_all={force_all}, live={not is_test})...")
+
+        # Fast-path check: If syncing missing-only, check if this show actually needs cards or upgrades
+        has_missing_cards = len(target_episodes) > 0
+        has_interim_cards = any(src == "generator_interim" for src in existing_cards.values())
+
+        if not force_all and not has_missing_cards and not has_interim_cards:
+            logger.info(f"⚡ Fast-skip: All {len(episodes)} cards for '{show['title']}' are already up to date with no interim cards waiting. Skipping MediUX check.")
+            yield {
+                "type": "done",
+                "result": {
+                    "status": "success",
+                    "test_mode": is_test,
+                    "force_live": force_live,
+                    "force_all": force_all,
+                    "mode": mode,
+                    "updated_cards": 0,
+                    "updated_season_posters": 0,
+                    "message": "All cards are already up to date."
+                }
+            }
+            return
+
         required_seasons = list(set(ep["season_number"] for ep in episodes))
         
         # Check MediUX for matching sets
@@ -646,10 +727,16 @@ class SyncManager:
             }
         }
 
-    def sync_show(self, rating_key: str, force_all: bool = True, force_live: bool = False) -> Dict[str, Any]:
+    def sync_show(
+        self,
+        rating_key: str,
+        force_all: bool = True,
+        force_live: bool = False,
+        source_mode: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Apply cards for a show according to its mode and style (synchronous wrapper)."""
         final_result = None
-        for event in self.sync_show_generator(rating_key, force_all=force_all, force_live=force_live):
+        for event in self.sync_show_generator(rating_key, force_all=force_all, force_live=force_live, source_mode=source_mode):
             if event.get("type") == "done":
                 final_result = event.get("result")
         return final_result or {"status": "error", "message": "No result returned from sync generator"}
@@ -674,12 +761,15 @@ class SyncManager:
         source: str = "auto",
         custom_style: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Generate/download title card and upload directly to Plex for a single episode."""
+        """
+        Render or download a title card for a single episode and upload it to Plex.
+        Honors TEST_MODE: if TEST_MODE is active and force_live is False, saves to cache/test_output/.
+        """
         show = get_show(rating_key)
         if not show:
             raise ValueError(f"Show with rating_key {rating_key} not found")
 
-        # Tell real-time listener to ignore feedback events for this show while we upload
+        # Tell real-time listener to ignore feedback events for this show
         try:
             from backend.plex_listener import plex_listener
             plex_listener.ignore_show(rating_key, duration=30.0)
@@ -690,6 +780,15 @@ class SyncManager:
         target_ep = next((e for e in episodes if e.get("season_number") == season_number and e.get("episode_number") == episode_number), None)
         if not target_ep:
             raise ValueError(f"Episode S{season_number:02d}E{episode_number:02d} not found in Plex")
+
+        # If show was ignored, update to active mode on live upload
+        if show.get("mode") == "ignored" and force_live:
+            has_mediux = bool(show.get("mediux_set_url")) or bool(
+                self.mediux.get_show_sets(show.get("tmdb_id")) if show.get("tmdb_id") else False
+            )
+            new_mode = "auto" if has_mediux else "generator_only"
+            update_show_mode(rating_key, new_mode, show.get("mediux_set_url"))
+            logger.info(f"Show '{show['title']}' was 'ignored'; updated to '{new_mode}' on single episode apply.")
 
         ep_key = target_ep["rating_key"]
         is_test = TEST_MODE and not force_live
