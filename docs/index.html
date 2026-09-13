@@ -592,7 +592,7 @@ PORT=8080</code></pre>
   plexcards:
     image: ghcr.io/havok89/plexcards:latest
     container_name: plexcards
-    restart: unless-stopped
+    restart: always
     ports:
       - "8080:8080"
     environment:
